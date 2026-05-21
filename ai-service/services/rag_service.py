@@ -1,24 +1,23 @@
 """
-RAG Service — LangChain + ChromaDB (native client) + Gemini 2.5
-
-Uses chromadb's native Python client directly (no langchain-chroma),
-which is fully Python 3.13 compatible.
+RAG Service — LangChain LCEL + ChromaDB (native) + Gemini 2.5
+Compatible with LangChain 1.3+ (uses LCEL pipeline, no deprecated chains)
 """
 
 import chromadb
-from chromadb.config import Settings as ChromaSettings
-from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
-from langchain.chains import ConversationalRetrievalChain
-from langchain.memory import ConversationBufferWindowMemory
-from langchain.schema import Document, BaseRetriever
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain.prompts import PromptTemplate
-from langchain.callbacks.manager import CallbackManagerForRetrieverRun
-from pydantic_settings import BaseSettings
-from pydantic import Field
+import logging
 from functools import lru_cache
 from typing import List
-import logging
+
+from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
+from langchain_core.documents import Document
+from langchain_core.retrievers import BaseRetriever
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.messages import HumanMessage, AIMessage
+from langchain_core.callbacks import CallbackManagerForRetrieverRun
+from langchain_core.output_parsers import StrOutputParser
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from pydantic_settings import BaseSettings
+from pydantic import Field
 
 logger = logging.getLogger(__name__)
 
@@ -27,8 +26,7 @@ class Settings(BaseSettings):
     gemini_api_key: str = ""
     chroma_persist_dir: str = "./chroma_db"
 
-    class Config:
-        env_file = ".env"
+    model_config = {"env_file": ".env", "extra": "ignore"}
 
 
 @lru_cache()
@@ -38,38 +36,23 @@ def get_settings() -> Settings:
 
 LANGUAGE_NAMES = {"en": "English", "hi": "Hindi", "pa": "Punjabi"}
 
-SYSTEM_PROMPT = """You are Eduko AI, a friendly and encouraging educational assistant for rural Indian students.
-
-Your guidelines:
-1. Respond in {language_name} language.
-2. Use simple, easy-to-understand language suitable for school students (Class 5-12).
-3. Break down complex topics into simple steps.
-4. Use relatable examples from rural Indian life when possible.
-5. Be encouraging and positive — never make students feel bad for not knowing something.
-6. If a question is not about education, gently redirect to learning topics.
-7. When explaining math or science, use clear numbered steps.
-
-Context from lessons:
-{context}
-
-Student question: {question}
-
-Answer in {language_name}:"""
+# ── Per-user conversation history (simple list-based) ────────────────────
+_histories: dict[str, list] = {}
 
 
-# ── Per-user conversation memory ──────────────────────────────────────────
-_memories: dict[str, ConversationBufferWindowMemory] = {}
+def get_history(user_id: str) -> list:
+    if user_id not in _histories:
+        _histories[user_id] = []
+    return _histories[user_id]
 
 
-def get_memory(user_id: str) -> ConversationBufferWindowMemory:
-    if user_id not in _memories:
-        _memories[user_id] = ConversationBufferWindowMemory(
-            k=6,
-            memory_key="chat_history",
-            return_messages=True,
-            output_key="answer",
-        )
-    return _memories[user_id]
+def add_to_history(user_id: str, human: str, ai: str):
+    h = get_history(user_id)
+    h.append(HumanMessage(content=human))
+    h.append(AIMessage(content=ai))
+    # Keep last 6 turns
+    if len(h) > 12:
+        _histories[user_id] = h[-12:]
 
 
 def get_llm() -> ChatGoogleGenerativeAI:
@@ -104,7 +87,7 @@ def get_collection() -> chromadb.Collection:
     )
 
 
-# ── Custom retriever wrapping native chromadb client ─────────────────────
+# ── Custom retriever wrapping native chromadb ─────────────────────────────
 class ChromaRetriever(BaseRetriever):
     """LangChain-compatible retriever using native chromadb client."""
 
@@ -150,7 +133,7 @@ async def ingest_lesson(lesson_id: str, title: str, content: str, metadata: dict
     ids = [f"{lesson_id}_{i}" for i in range(len(chunks))]
     metas = [{"lesson_id": lesson_id, "title": title, **metadata} for _ in chunks]
 
-    # Delete existing chunks for this lesson (upsert behaviour)
+    # Upsert: delete old chunks first
     try:
         collection.delete(where={"lesson_id": lesson_id})
     except Exception:
@@ -172,28 +155,45 @@ async def answer_question(
     user_id: str,
     history: list[dict] = [],
 ) -> str:
-    """RAG-based QA with per-user conversation memory."""
+    """RAG-based QA using LCEL pipeline with per-user chat history."""
     try:
         language_name = LANGUAGE_NAMES.get(language, "Hindi")
 
-        prompt = PromptTemplate(
-            input_variables=["context", "question", "language_name"],
-            template=SYSTEM_PROMPT,
-        ).partial(language_name=language_name)
+        # Retrieve relevant context
+        retriever = ChromaRetriever(k=4)
+        docs = retriever.invoke(message)
+        context = "\n\n".join(d.page_content for d in docs) if docs else "No specific lesson context available."
 
-        memory = get_memory(user_id)
-
-        chain = ConversationalRetrievalChain.from_llm(
-            llm=get_llm(),
-            retriever=ChromaRetriever(k=4),
-            memory=memory,
-            return_source_documents=False,
-            combine_docs_chain_kwargs={"prompt": prompt},
-            output_key="answer",
+        # Build prompt
+        system_msg = (
+            f"You are Eduko AI, a friendly and encouraging educational assistant for rural Indian students.\n"
+            f"Respond ONLY in {language_name} language.\n"
+            f"Use simple words suitable for school students (Class 5-12).\n"
+            f"Be encouraging and positive. Use relatable examples from rural Indian life.\n"
+            f"Break complex topics into numbered steps.\n\n"
+            f"Relevant lesson context:\n{context}"
         )
 
-        result = chain.invoke({"question": message})
-        return result.get("answer", "")
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", system_msg),
+            MessagesPlaceholder(variable_name="chat_history"),
+            ("human", "{question}"),
+        ])
+
+        # Restore history
+        chat_history = get_history(user_id)
+
+        # LCEL chain
+        chain = prompt | get_llm() | StrOutputParser()
+
+        result = chain.invoke({
+            "question": message,
+            "chat_history": chat_history,
+        })
+
+        # Store in memory
+        add_to_history(user_id, message, result)
+        return result
 
     except Exception as e:
         logger.error(f"RAG chain error: {e}")

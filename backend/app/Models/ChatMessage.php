@@ -8,7 +8,7 @@ class ChatMessage extends Model
 {
     protected $connection = 'mongodb';
     protected $collection = 'chat_messages';
-    protected $fillable = ['user_id', 'message', 'response', 'language'];
+    protected $fillable = ['user_id', 'message', 'response', 'language', 'role', 'content'];
 
     public function user() { return $this->belongsTo(User::class, 'user_id'); }
 }

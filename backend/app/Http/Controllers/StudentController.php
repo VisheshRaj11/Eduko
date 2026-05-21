@@ -2,125 +2,249 @@
 
 namespace App\Http\Controllers;
 
+use Illuminate\Http\Request;
 use App\Models\Student;
 use App\Models\Progress;
 use App\Models\LearningPlan;
-use App\Models\Quiz;
-use Illuminate\Http\Request;
+use App\Models\Lesson;
+use App\Jobs\GenerateLearningPlanJob;
 use Carbon\Carbon;
 
 class StudentController extends Controller
 {
+    /**
+     * GET /api/dashboard
+     */
     public function dashboard(Request $request)
     {
-        $user    = $request->user();
-        $student = Student::where('user_id', $user->_id)->first();
+        $user = $request->user();
+        $userId = (string) $user->_id;
 
-        if (! $student) {
-            return response()->json(['error' => 'Student profile not found'], 404);
-        }
+        // Get student profile
+        $student = Student::where('user_id', $userId)->first();
 
-        $progressRecords = Progress::where('student_id', $student->_id)->get();
-        $streak          = $this->calculateStreak($student->_id);
-        $points          = $progressRecords->sum('score');
+        // Recent quiz progress
+        $recentProgress = Progress::where('user_id', $userId)
+            ->orderBy('created_at', 'desc')
+            ->limit(10)
+            ->get();
 
-        // Recent lesson progress
-        $recentLessons = $progressRecords->take(5)->map(fn($p) => [
-            '_id'      => (string) $p->lesson_id,
-            'title'    => $p->lesson?->title ?? 'Lesson',
-            'subject'  => $p->lesson?->subject ?? '',
-            'progress' => min(100, intval($p->score)),
-        ]);
+        // Calculate streak (consecutive days with activity)
+        $streak = $this->calculateStreak($userId);
+
+        // Lessons completed
+        $lessonsCompleted = Progress::where('user_id', $userId)
+            ->where('type', 'lesson')
+            ->where('completed', true)
+            ->count();
+
+        // Quizzes taken
+        $quizzesTaken = Progress::where('user_id', $userId)
+            ->where('type', 'quiz')
+            ->count();
+
+        // Recent lessons
+        $recentLessons = Lesson::orderBy('created_at', 'desc')
+            ->limit(3)
+            ->get()
+            ->map(function($lesson) use ($userId) {
+                $progress = Progress::where('user_id', $userId)
+                    ->where('lesson_id', (string) $lesson->_id)
+                    ->first();
+                return [
+                    '_id'      => (string) $lesson->_id,
+                    'title'    => $lesson->title,
+                    'subject'  => $lesson->subject,
+                    'progress' => $progress ? $progress->completion_pct : 0,
+                ];
+            });
+
+        // Today's tasks from learning plan
+        $plan = LearningPlan::where('user_id', $userId)->orderBy('created_at', 'desc')->first();
+        $todayTasks = $this->getTodayTasks($plan);
 
         return response()->json([
-            'streak'             => $streak,
-            'points'             => $points,
-            'lessons_completed'  => $progressRecords->count(),
-            'quizzes_taken'      => $progressRecords->count(),
+            'streak'             => $student?->streak ?? $streak,
+            'points'             => $student?->points ?? 0,
+            'lessons_completed'  => $lessonsCompleted,
+            'quizzes_taken'      => $quizzesTaken,
             'recent_lessons'     => $recentLessons,
-            'today_tasks'        => $this->getTodayTasks($student),
+            'today_tasks'        => $todayTasks,
+            'badges'             => $student?->badges ?? [],
+            'weekly_progress'    => $this->getWeeklyProgress($userId),
         ]);
     }
 
+    /**
+     * GET /api/learning-plan
+     */
     public function learningPlan(Request $request)
     {
-        $user    = $request->user();
-        $student = Student::where('user_id', $user->_id)->first();
-        $plan    = LearningPlan::where('student_id', $student?->_id)->latest()->first();
+        $userId = (string) $request->user()->_id;
+        $plan = LearningPlan::where('user_id', $userId)->orderBy('created_at', 'desc')->first();
 
-        if (! $plan) {
-            return response()->json(['message' => 'No plan generated yet. Use /api/generate-plan'], 404);
+        if (!$plan) {
+            // Dispatch async plan generation
+            GenerateLearningPlanJob::dispatch($userId);
+            return response()->json([
+                'status'  => 'generating',
+                'message' => 'Your personalized plan is being generated. Check back in a moment.',
+                'plan'    => null,
+            ], 202);
         }
 
-        return response()->json($plan);
+        return response()->json($plan->toArray());
     }
 
+    /**
+     * POST /api/quiz/submit
+     */
     public function submitQuiz(Request $request)
     {
-        $data = $request->validate([
+        $validated = $request->validate([
             'quiz_id' => 'required|string',
-            'score'   => 'required|integer|min:0|max:100',
-            'answers' => 'nullable|array',
+            'score'   => 'required|numeric|min:0|max:100',
+            'answers' => 'required|array',
         ]);
 
-        $user    = $request->user();
-        $student = Student::where('user_id', $user->_id)->first();
-        $quiz    = Quiz::find($data['quiz_id']);
+        $user   = $request->user();
+        $userId = (string) $user->_id;
 
-        if (! $student || ! $quiz) {
-            return response()->json(['error' => 'Not found'], 404);
+        $correct = collect($validated['answers'])->where('correct', true)->count();
+        $total   = count($validated['answers']);
+
+        // Save progress
+        Progress::create([
+            'user_id'        => $userId,
+            'quiz_id'        => $validated['quiz_id'],
+            'type'           => 'quiz',
+            'score'          => $validated['score'],
+            'correct'        => $correct,
+            'total'          => $total,
+            'answers'        => $validated['answers'],
+            'completed'      => true,
+            'completion_pct' => $validated['score'],
+        ]);
+
+        // Update student points & streak
+        $pointsEarned = $correct * 10;
+        $student      = Student::where('user_id', $userId)->first();
+
+        if ($student) {
+            $student->points  = ($student->points ?? 0) + $pointsEarned;
+            $student->streak  = $this->calculateStreak($userId);
+            // Badge logic
+            $newBadge = null;
+            if ($validated['score'] >= 90 && !in_array('🏆 Perfect Score', $student->badges ?? [])) {
+                $student->badges = array_merge($student->badges ?? [], ['🏆 Perfect Score']);
+                $newBadge = '🏆 Perfect Score';
+            } elseif ($student->streak >= 7 && !in_array('🔥 Week Streak', $student->badges ?? [])) {
+                $student->badges = array_merge($student->badges ?? [], ['🔥 Week Streak']);
+                $newBadge = '🔥 Week Streak';
+            }
+            $student->save();
         }
 
-        $progress = Progress::updateOrCreate(
-            ['student_id' => $student->_id, 'lesson_id' => $quiz->lesson_id],
-            [
-                'score'        => $data['score'],
-                'attempts'     => 1,
-                'completed_at' => Carbon::now(),
-            ]
-        );
+        // Regenerate AI learning plan async
+        GenerateLearningPlanJob::dispatch($userId);
 
-        // Increment attempts if exists
-        if ($progress->wasRecentlyCreated === false) {
-            $progress->increment('attempts');
-        }
-
-        return response()->json(['message' => 'Quiz submitted', 'progress' => $progress]);
+        return response()->json([
+            'score'         => $validated['score'],
+            'correct'       => $correct,
+            'total'         => $total,
+            'points_earned' => $pointsEarned,
+            'new_badge'     => $newBadge ?? null,
+            'message'       => $validated['score'] >= 70 ? 'Great job! 🎉' : 'Keep practicing! You can do it.',
+        ]);
     }
 
-    private function calculateStreak(string $studentId): int
+    /**
+     * GET /api/progress
+     */
+    public function progress(Request $request)
     {
-        $records = Progress::where('student_id', $studentId)
-            ->orderBy('completed_at', 'desc')
-            ->get(['completed_at']);
+        $userId = (string) $request->user()->_id;
+        $progressData = Progress::where('user_id', $userId)
+            ->orderBy('created_at', 'desc')
+            ->limit(50)
+            ->get()
+            ->groupBy('subject');
+
+        return response()->json($progressData);
+    }
+
+    /**
+     * GET /api/lessons/{id}/download
+     */
+    public function downloadLesson(Request $request, $id)
+    {
+        $lesson = Lesson::find($id);
+        if (!$lesson) return response()->json(['error' => 'Lesson not found'], 404);
+
+        return response()->json([
+            'lesson'          => $lesson->toArray(),
+            'cached_at'       => now()->toISOString(),
+            'offline_version' => 1,
+        ]);
+    }
+
+    // ── Private helpers ────────────────────────────────────────
+
+    private function calculateStreak(string $userId): int
+    {
+        $dates = Progress::where('user_id', $userId)
+            ->orderBy('created_at', 'desc')
+            ->pluck('created_at')
+            ->map(fn($d) => Carbon::parse($d)->toDateString())
+            ->unique()
+            ->values();
+
+        if ($dates->isEmpty()) return 0;
 
         $streak = 0;
-        $day = Carbon::today();
+        $today  = Carbon::today()->toDateString();
+        $checkDate = $today;
 
-        foreach ($records as $r) {
-            if ($r->completed_at && $r->completed_at->isSameDay($day)) {
+        foreach ($dates as $date) {
+            if ($date === $checkDate || $date === Carbon::parse($checkDate)->subDay()->toDateString()) {
                 $streak++;
-                $day->subDay();
+                $checkDate = $date;
             } else {
                 break;
             }
         }
-
         return $streak;
     }
 
-    private function getTodayTasks(Student $student): array
+    private function getTodayTasks(?object $plan): array
     {
-        $plan = LearningPlan::where('student_id', $student->_id)->latest()->first();
-        $day  = now()->format('l');
+        if (!$plan || !isset($plan->plan)) return [
+            'Review yesterday\'s lessons',
+            'Complete one quiz',
+            'Ask AI Tutor a question',
+        ];
 
-        if ($plan && isset($plan->weekly_plan)) {
-            $today = collect($plan->weekly_plan)->firstWhere('day', $day);
-            if ($today && isset($today['tasks'])) {
-                return collect($today['tasks'])->pluck('topic')->toArray();
+        $dayName = strtolower(now()->format('l'));
+        $days    = $plan->plan['days'] ?? [];
+
+        foreach ($days as $day) {
+            if (strtolower($day['day'] ?? '') === $dayName) {
+                return collect($day['tasks'] ?? [])->pluck('topic')->filter()->values()->all();
             }
         }
+        return ['No tasks scheduled for today. Take a revision day!'];
+    }
 
-        return ['Complete today\'s lesson', 'Take a practice quiz', 'Review notes'];
+    private function getWeeklyProgress(string $userId): array
+    {
+        $weeks = [];
+        for ($i = 6; $i >= 0; $i--) {
+            $date  = Carbon::today()->subDays($i);
+            $count = Progress::where('user_id', $userId)
+                ->whereDate('created_at', $date)
+                ->count();
+            $weeks[] = ['date' => $date->format('D'), 'sessions' => $count];
+        }
+        return $weeks;
     }
 }

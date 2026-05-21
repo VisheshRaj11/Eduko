@@ -2,7 +2,7 @@ import { create } from 'zustand'
 
 const useStore = create((set, get) => ({
   // ── Auth ────────────────────────────────────────────────
-  user: JSON.parse(localStorage.getItem('eduko_user') || 'null'),
+  user:  JSON.parse(localStorage.getItem('eduko_user')  || 'null'),
   token: localStorage.getItem('eduko_token') || null,
 
   setUser: (user) => {
@@ -22,16 +22,23 @@ const useStore = create((set, get) => ({
   // ── UI ──────────────────────────────────────────────────
   sidebarOpen: false,
   setSidebarOpen: (v) => set({ sidebarOpen: v }),
-  toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
+  toggleSidebar:  () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
 
   // ── Offline ─────────────────────────────────────────────
   isOnline: navigator.onLine,
   setOnline: (v) => set({ isOnline: v }),
 
+  // ── Notifications ────────────────────────────────────────
+  notificationCount: 0,
+  setNotificationCount: (n) => set({ notificationCount: n }),
+  incrementNotifications: () => set((s) => ({ notificationCount: s.notificationCount + 1 })),
+
   // ── Chat ────────────────────────────────────────────────
   chatMessages: [],
-  addChatMessage: (msg) => set((s) => ({ chatMessages: [...s.chatMessages, msg] })),
-  clearChat: () => set({ chatMessages: [] }),
+  chatLanguage: 'hi',
+  addChatMessage:  (msg)  => set((s) => ({ chatMessages: [...s.chatMessages, msg] })),
+  clearChat:       ()     => set({ chatMessages: [] }),
+  setChatLanguage: (lang) => set({ chatLanguage: lang }),
 
   // ── Dashboard data ───────────────────────────────────────
   dashboardData: null,
@@ -53,6 +60,13 @@ const useStore = create((set, get) => ({
   clearSyncQueue: () => {
     localStorage.removeItem('eduko_sync')
     set({ syncQueue: [] })
+  },
+
+  // ── Settings ─────────────────────────────────────────────
+  language: localStorage.getItem('eduko_lang') || 'en',
+  setLanguage: (lang) => {
+    localStorage.setItem('eduko_lang', lang)
+    set({ language: lang })
   },
 }))
 

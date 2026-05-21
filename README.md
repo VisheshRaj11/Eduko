@@ -1,7 +1,140 @@
-# 🌱 Eduko — AI-Powered Rural Education Platform
+# 🎓 Eduko — AI-Powered Rural Education Platform
 
-> AI-driven, multilingual, offline-first education platform for rural India.
-> Built with React (Vite/PWA), Laravel, FastAPI, MongoDB, Redis, and Gemini 2.5.
+> Bringing quality education to every child in India through AI, multilingual support, and offline-first PWA.
+
+---
+
+## 🏗️ Architecture
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                     FRONTEND (React + Vite)              │
+│  Student Portal │ Teacher Dashboard │ Community Hub       │
+│  Offline PWA (Service Worker + Workbox)                  │
+└────────────────────────┬────────────────────────────────┘
+                         │ REST API (Sanctum)
+┌────────────────────────▼────────────────────────────────┐
+│               BACKEND (Laravel 11 + MongoDB)             │
+│  Auth │ Student │ Teacher │ Lessons │ Quiz │ Volunteer   │
+│  Queue Jobs → FastAPI calls (async)                      │
+│  Twilio SMS Notifications                                │
+└────────┬─────────────────────────────────┬──────────────┘
+         │ HTTP (Queued Jobs)              │ Redis Cache
+┌────────▼──────────────┐   ┌─────────────▼──────────────┐
+│  FastAPI AI Service   │   │     Redis (Queue+Cache)     │
+│  LangChain + Gemini   │   └────────────────────────────┘
+│  RAG (ChromaDB)       │
+│  Adaptive Plans       │
+│  Translation          │
+│  OCR (Gemini Vision)  │
+│  Speech-to-Text       │
+└───────────────────────┘
+         │
+┌────────▼──────────────┐
+│   Storage Layer        │
+│  MongoDB Atlas (DB)    │
+│  ChromaDB (vectors)    │
+└───────────────────────┘
+```
+
+---
+
+## 🚀 Quick Start
+
+### Prerequisites
+- Node.js 20+
+- PHP 8.3+ & Composer
+- Python 3.11+
+- MongoDB Atlas account (or local MongoDB)
+
+### 1. Clone & Setup
+
+```bash
+git clone <your-repo>
+cd Eduko
+```
+
+### 2. Frontend
+```bash
+cd frontend
+npm install
+npm run dev
+# → http://localhost:5173
+```
+
+### 3. Backend (Laravel)
+```bash
+cd backend
+composer install
+cp .env.example .env
+# Edit .env with your credentials
+php artisan key:generate
+php artisan serve
+# → http://localhost:8000
+```
+
+### 4. AI Service (FastAPI)
+```bash
+cd ai-service
+python -m venv venv
+venv\Scripts\activate        # Windows
+pip install -r requirements.txt
+uvicorn main:app --reload --port 4000
+# → http://localhost:4000
+# Docs → http://localhost:4000/docs
+```
+
+### 5. Docker (All-in-One)
+```bash
+# From root directory
+docker-compose up --build
+```
+
+---
+
+## 🔑 Environment Variables
+
+### Backend (`backend/.env`)
+```env
+MONGODB_URI=mongodb+srv://...
+GEMINI_API_KEY=AIzaSy...
+TWILIO_SID=AC...
+TWILIO_TOKEN=your_auth_token
+TWILIO_FROM=+1XXXXXXXXXX
+AI_SERVICE_URL=http://localhost:4000
+QUEUE_CONNECTION=database
+```
+
+### AI Service (`ai-service/.env`)
+```env
+GEMINI_API_KEY=AIzaSy...
+CHROMA_PERSIST_DIR=./chroma_db
+```
+
+### Frontend (`frontend/.env`)
+```env
+VITE_API_URL=http://localhost:8000/api
+VITE_AI_URL=http://localhost:4000
+```
+
+---
+
+## 🌟 Features
+
+| Feature | Tech Stack | Status |
+|---------|-----------|--------|
+| AI Tutor Chatbot | LangChain + ChromaDB + Gemini 2.5 Flash | ✅ |
+| RAG Pipeline | ChromaDB vector store | ✅ |
+| Adaptive Learning Plans | Gemini LLM + user analytics | ✅ |
+| Multilingual (Hindi/Punjabi/English) | Gemini translation chains | ✅ |
+| Voice Input | Web Speech API + Gemini multimodal | ✅ |
+| OCR (handwritten work) | Gemini Vision API | ✅ |
+| Offline-First PWA | Vite Plugin PWA + Workbox | ✅ |
+| Teacher Analytics Dashboard | Recharts + MongoDB aggregation | ✅ |
+| Volunteer Hub + Session Booking | Laravel + Twilio SMS | ✅ |
+| Bulk SMS Notifications | Twilio REST API | ✅ |
+| Role-Based Auth | Laravel Sanctum | ✅ |
+| Background Job Queue | Laravel Jobs + Redis | ✅ |
 
 ---
 
@@ -9,198 +142,103 @@
 
 ```
 Eduko/
-├── frontend/       # React Vite PWA (port 5173)
-├── backend/        # Laravel 11 API (port 8000)
-└── ai-service/     # FastAPI AI Microservice (port 8001)
+├── frontend/          # React + Vite PWA
+│   ├── src/
+│   │   ├── pages/     # Landing, Dashboard, AI Tutor, Quiz, etc.
+│   │   ├── components/ # ChatUI, Sidebar, Navbar, etc.
+│   │   ├── api/       # Axios client for all endpoints
+│   │   ├── store/     # Zustand state management
+│   │   └── i18n/      # Hindi, Punjabi, English translations
+│   └── vite.config.js # PWA + proxy config
+│
+├── backend/           # Laravel 11
+│   ├── app/
+│   │   ├── Http/Controllers/ # Auth, Student, Teacher, AI, etc.
+│   │   ├── Jobs/       # GeneratePlan, Translate, Ingest jobs
+│   │   ├── Models/     # MongoDB models
+│   │   └── Services/   # TwilioService
+│   └── routes/api.php  # All API routes
+│
+├── ai-service/        # FastAPI + LangChain
+│   ├── routers/        # chat, plan, translate, speech, ocr
+│   ├── services/       # rag_service, adaptive_service, content_service
+│   └── main.py         # FastAPI app entry point
+│
+└── docker-compose.yml  # One-command startup
 ```
 
 ---
 
-## ⚡ Quick Start
+## 🎨 Theme
 
-### Prerequisites
-
-| Tool         | Version  | Download |
-|---|---|---|
-| Node.js      | ≥ 20     | https://nodejs.org |
-| PHP          | ≥ 8.2    | https://php.net |
-| Composer     | ≥ 2      | https://getcomposer.org |
-| Python       | ≥ 3.11   | https://python.org |
-| MongoDB      | ≥ 7      | https://mongodb.com |
-| Redis        | ≥ 7      | https://redis.io |
-| Tesseract    | ≥ 5      | https://github.com/tesseract-ocr/tesseract |
+Inspired by **Academix** design:
+- **Background**: Cream (#FAFAF5)
+- **Primary**: Lavender (#8B5CF6, #7C3AED)
+- **CTA**: Lime Green (#A3E635, #BEF264)
+- **Accent**: Pink (#F472B6)
+- **Font**: Outfit (headings) + Inter (body)
 
 ---
 
-## 🎨 Frontend (React + Vite + PWA)
+## 🔧 API Endpoints
 
-```powershell
-cd frontend
-npm install
-cp .env.example .env        # Edit VITE_API_URL if needed
-npm run dev                  # → http://localhost:5173
+### Auth
+- `POST /api/register` — Register (student/teacher/volunteer)
+- `POST /api/login` — Login → returns Sanctum token
+
+### Student
+- `GET /api/dashboard` — Dashboard stats
+- `GET /api/learning-plan` — AI-generated weekly plan
+- `POST /api/quiz/submit` — Submit quiz answers
+
+### AI
+- `POST /api/ask-ai` — Chat with AI Tutor
+- `POST /api/generate-plan` — Generate adaptive learning plan
+- `POST /api/translate` — Translate content
+- `POST /api/speech-to-text` — Audio → text
+- `POST /api/ocr` — Image → text (handwriting)
+
+### Teacher
+- `GET /api/teacher/analytics` — Class analytics
+- `POST /api/teacher/upload-lesson` — Upload + auto-translate lesson
+- `POST /api/teacher/send-sms` — Bulk SMS via Twilio
+
+### Volunteer
+- `POST /api/volunteer/join` — Register as volunteer
+- `GET /api/sessions` — List upcoming sessions
+- `POST /api/session/book` — Book a session (sends Twilio SMS)
+
+---
+
+## 📱 PWA (Offline Support)
+
+The app caches:
+- All lessons and quizzes (7 days)
+- Dashboard data (1 hour)
+- Static assets forever (fonts, icons)
+
+Quiz answers submitted while offline are queued and synced automatically when internet returns.
+
+---
+
+## 🤖 AI Service Endpoints
+
+```
+GET  /health             — Service health check
+POST /ai/chat            — RAG-powered tutoring
+POST /ai/ingest          — Add lesson to vector store
+POST /ai/generate-plan   — Generate 7-day study plan
+GET  /ai/plan/{user_id}  — Retrieve stored plan
+POST /ai/translate       — Translate + simplify content
+POST /ai/translate-lesson — Translate full lesson
+POST /ai/speech-to-text  — Audio transcription
+POST /ai/speech-json     — Base64 audio transcription
+POST /ai/ocr             — Image OCR
+POST /ai/ocr-json        — Base64 image OCR
 ```
 
-### Build for production
-```powershell
-npm run build
-npm run preview
-```
-
-**Pages available:**
-- `/` — Landing page
-- `/login` — Login
-- `/register` — Register (student / teacher / volunteer)
-- `/dashboard` — Student dashboard with stats
-- `/tutor` — AI Tutor chat (multilingual, voice, OCR)
-- `/plan` — AI-generated weekly study plan
-- `/library` — Content library with filters
-- `/quiz` — Interactive quiz with feedback
-- `/analytics` — Teacher analytics dashboard
-- `/volunteers` — Volunteer hub + session booking
-- `/settings` — Profile, notifications, language
+Interactive docs: http://localhost:4000/docs
 
 ---
 
-## ⚙️ Backend (Laravel 11)
-
-```powershell
-cd backend
-composer install
-cp .env.example .env
-php artisan key:generate
-php artisan serve                              # → http://localhost:8000
-php artisan queue:work redis --queue=ai,default  # Start queue worker
-```
-
-### Environment Variables (backend/.env)
-```
-DB_CONNECTION=mongodb
-DB_HOST=127.0.0.1
-DB_PORT=27017
-DB_DATABASE=eduko
-
-QUEUE_CONNECTION=redis
-REDIS_HOST=127.0.0.1
-REDIS_PORT=6379
-
-AI_SERVICE_URL=http://localhost:8001
-FAST2SMS_API_KEY=your_key_here
-GEMINI_API_KEY=your_key_here
-```
-
-### API Endpoints
-
-| Method | Endpoint | Auth | Description |
-|---|---|---|---|
-| POST | /api/register | ❌ | Register user |
-| POST | /api/login | ❌ | Login → token |
-| GET | /api/dashboard | ✅ | Student dashboard data |
-| GET | /api/learning-plan | ✅ | Weekly AI plan |
-| POST | /api/quiz/submit | ✅ | Submit quiz score |
-| POST | /api/ask-ai | ✅ | AI tutor chat |
-| POST | /api/generate-plan | ✅ | Generate new AI plan |
-| GET | /api/lessons | ✅ | List lessons |
-| POST | /api/lessons | ✅ | Create lesson |
-| GET | /api/analytics/teacher | ✅ | Teacher analytics |
-| POST | /api/volunteer/join | ✅ | Join as volunteer |
-| POST | /api/session/book | ✅ | Book tutor session |
-
----
-
-## 🤖 AI Service (FastAPI + Gemini 2.5)
-
-```powershell
-cd ai-service
-python -m venv venv
-.\venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-cp .env.example .env      # Add GEMINI_API_KEY
-python main.py             # → http://localhost:8001
-```
-
-### AI Endpoints
-
-| Method | Endpoint | Description |
-|---|---|---|
-| POST | /ai/chat | RAG-powered tutor chat |
-| POST | /ai/generate-plan | 7-day study plan generation |
-| POST | /ai/translate | Multilingual translation |
-| POST | /ai/speech-to-text | Whisper STT (local, free) |
-| POST | /ai/ocr | Tesseract OCR |
-| POST | /ai/ingest | Add lesson to vector DB |
-| GET | /health | Service health check |
-| GET | /docs | Swagger UI |
-
-### Get a Gemini API Key
-1. Go to https://aistudio.google.com/
-2. Click "Get API Key" → Create API key
-3. Copy to `GEMINI_API_KEY` in both `.env` files
-
----
-
-## 📡 SMS (Fast2SMS — Free)
-
-Fast2SMS provides a free SMS tier for India:
-1. Register at https://www.fast2sms.com/
-2. Get API key from Dashboard → Dev API
-3. Add to `backend/.env` as `FAST2SMS_API_KEY`
-4. Free tier: 200 SMS credits on signup
-
----
-
-## 🔌 Offline / PWA
-
-- Install the app on Android: Open in Chrome → Menu → "Add to Home Screen"
-- Lessons and quizzes are cached by the service worker
-- Answers entered offline are queued in IndexedDB and synced when online
-- The offline indicator in the navbar shows current connectivity status
-
----
-
-## 🗄️ MongoDB Collections
-
-| Collection | Key Fields |
-|---|---|
-| users | name, phone (unique), role, language |
-| students | user_id, grade_level, progress_summary |
-| teachers | user_id, specialization |
-| lessons | title, subject, language, difficulty, content_blocks |
-| quizzes | lesson_id, questions[] |
-| progress | student_id, lesson_id, score, attempts |
-| learning_plans | student_id, weekly_plan[], generated_at |
-| chat_messages | user_id, message, response, language |
-| volunteers | user_id, name, specialization, availability |
-| sessions | volunteer_id, student_id, scheduled_time, status |
-
----
-
-## 🚀 Production Deployment
-
-| Service | Recommended Platform |
-|---|---|
-| Frontend | Vercel / Netlify |
-| Laravel | Railway / Render / DigitalOcean |
-| FastAPI | Railway / Render |
-| MongoDB | MongoDB Atlas (free M0 tier) |
-| Redis | Upstash Redis (free tier) |
-
----
-
-## 🌍 Multilingual Support
-
-The platform supports three languages:
-
-| Language | Code | Script |
-|---|---|---|
-| English | `en` | Latin |
-| Hindi | `hi` | Devanagari (हिंदी) |
-| Punjabi | `pa` | Gurmukhi (ਪੰਜਾਬੀ) |
-
-Switch language using the globe icon in the navbar. Preference is saved in localStorage.
-
----
-
-## 📞 Support
-
-Built with ❤️ for rural India's students. Questions? Open an issue on GitHub.
+Built with ❤️ for rural India 🇮🇳

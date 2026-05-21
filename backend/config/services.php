@@ -35,4 +35,14 @@ return [
         ],
     ],
 
+    'twilio' => [
+        'sid'   => env('TWILIO_SID'),
+        'token' => env('TWILIO_TOKEN'),
+        'from'  => env('TWILIO_FROM'),
+    ],
+
+    'ai' => [
+        'url' => env('AI_SERVICE_URL', 'http://localhost:4000'),
+    ],
+
 ];

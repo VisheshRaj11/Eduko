@@ -1,120 +1,146 @@
-import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { useTranslation } from 'react-i18next'
-import { useAuth } from '../hooks/useAuth'
+import { NavLink, useNavigate } from 'react-router-dom'
+import { motion } from 'framer-motion'
 import useStore from '../store/useStore'
+import { authAPI } from '../api/client'
 import {
-  FiHome, FiMessageSquare, FiBook, FiBookOpen,
-  FiBarChart2, FiUsers, FiSettings, FiLogOut,
-  FiAward, FiCalendar, FiX
+  FiHome, FiMessageSquare, FiCalendar, FiBook,
+  FiTarget, FiTrendingUp, FiUsers, FiSettings, FiLogOut,
 } from 'react-icons/fi'
-import { motion, AnimatePresence } from 'framer-motion'
 
-const navLinks = [
-  { to: '/dashboard',  icon: FiHome,          key: 'dashboard' },
-  { to: '/tutor',      icon: FiMessageSquare, key: 'tutor' },
-  { to: '/plan',       icon: FiCalendar,      key: 'plan' },
-  { to: '/library',    icon: FiBookOpen,      key: 'library' },
-  { to: '/quiz',       icon: FiAward,         key: 'quizzes' },
-  { to: '/analytics',  icon: FiBarChart2,     key: 'analytics' },
-  { to: '/volunteers', icon: FiUsers,         key: 'volunteers' },
-  { to: '/settings',   icon: FiSettings,      key: 'settings' },
+const studentLinks = [
+  { to: '/dashboard',  icon: FiHome,          label: 'Dashboard'       },
+  { to: '/tutor',      icon: FiMessageSquare, label: 'AI Tutor',  badge: 'AI' },
+  { to: '/plan',       icon: FiCalendar,      label: 'Study Plan'      },
+  { to: '/library',    icon: FiBook,          label: 'Content Library' },
+  { to: '/quiz',       icon: FiTarget,        label: 'Quizzes'         },
+  { to: '/volunteers', icon: FiUsers,         label: 'Volunteer Hub'   },
+  { to: '/settings',   icon: FiSettings,      label: 'Settings'        },
+]
+
+const teacherLinks = [
+  { to: '/teacher',    icon: FiHome,          label: 'Dashboard'       },
+  { to: '/analytics',  icon: FiTrendingUp,    label: 'Analytics'       },
+  { to: '/library',    icon: FiBook,          label: 'Content Library' },
+  { to: '/tutor',      icon: FiMessageSquare, label: 'AI Tutor',  badge: 'AI' },
+  { to: '/volunteers', icon: FiUsers,         label: 'Volunteer Hub'   },
+  { to: '/settings',   icon: FiSettings,      label: 'Settings'        },
+]
+
+const volunteerLinks = [
+  { to: '/volunteers', icon: FiUsers,         label: 'Sessions'        },
+  { to: '/tutor',      icon: FiMessageSquare, label: 'AI Tutor',  badge: 'AI' },
+  { to: '/settings',   icon: FiSettings,      label: 'Settings'        },
 ]
 
 export default function Sidebar() {
-  const { t } = useTranslation()
-  const location = useLocation()
+  const { user, sidebarOpen, setSidebarOpen, logout } = useStore()
   const navigate = useNavigate()
-  const { logout, user } = useAuth()
-  const { sidebarOpen, setSidebarOpen } = useStore()
 
-  const handleLogout = () => {
+  const links = user?.role === 'teacher' ? teacherLinks
+    : user?.role === 'volunteer' ? volunteerLinks
+    : studentLinks
+
+  const initials = user?.name
+    ? user.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
+    : 'U'
+
+  const handleLogout = async () => {
+    try { await authAPI.logout() } catch {}
     logout()
     navigate('/login')
   }
 
-  const sidebarContent = (
-    <div className="sidebar">
-      {/* Logo */}
-      <div className="flex items-center justify-between px-5 py-5 border-b border-white/10">
-        <Link to="/dashboard" className="flex items-center gap-2.5">
-          <div className="w-9 h-9 bg-white/20 rounded-xl flex items-center justify-center text-lg font-bold">E</div>
-          <span className="text-white font-bold text-lg tracking-tight">Eduko</span>
-        </Link>
-        <button
-          onClick={() => setSidebarOpen(false)}
-          className="md:hidden text-white/70 hover:text-white transition-colors"
-        >
-          <FiX size={20} />
-        </button>
-      </div>
-
-      {/* User info */}
-      <div className="px-5 py-4 border-b border-white/10">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center text-white font-bold text-lg">
-            {user?.name?.[0]?.toUpperCase() || 'U'}
-          </div>
-          <div>
-            <div className="text-white font-semibold text-sm leading-tight">{user?.name || 'User'}</div>
-            <div className="text-white/60 text-xs capitalize">{user?.role || 'student'}</div>
-          </div>
-        </div>
-      </div>
-
-      {/* Nav links */}
-      <nav className="flex-1 py-3 overflow-y-auto">
-        {navLinks.map(({ to, icon: Icon, key }) => {
-          const active = location.pathname === to
-          return (
-            <Link
-              key={to}
-              to={to}
-              onClick={() => setSidebarOpen(false)}
-              className={`sidebar-link ${active ? 'active' : ''}`}
-            >
-              <Icon className="icon" size={18} />
-              {t(key)}
-            </Link>
-          )
-        })}
-      </nav>
-
-      {/* Logout */}
-      <div className="px-3 py-4 border-t border-white/10">
-        <button onClick={handleLogout} className="sidebar-link w-full text-red-300 hover:text-red-200 hover:bg-red-500/10">
-          <FiLogOut className="icon" size={18} />
-          {t('logout')}
-        </button>
-      </div>
-    </div>
-  )
-
   return (
     <>
-      {/* Desktop sidebar */}
-      <div className="hidden md:block flex-shrink-0" style={{ width: 260 }}>
-        {sidebarContent}
-      </div>
-
       {/* Mobile overlay */}
-      <AnimatePresence>
-        {sidebarOpen && (
-          <>
-            <motion.div
-              className="fixed inset-0 bg-black/50 z-30 md:hidden"
-              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      {sidebarOpen && (
+        <div
+          onClick={() => setSidebarOpen(false)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 35, backdropFilter: 'blur(2px)' }}
+        />
+      )}
+
+      <aside className={`sidebar ${sidebarOpen ? 'open' : ''}`}>
+        {/* Logo */}
+        <div style={{ padding: '20px 20px 12px', borderBottom: '1px solid rgba(255,255,255,0.1)', marginBottom: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{
+              width: 40, height: 40, borderRadius: 12,
+              background: 'linear-gradient(135deg, #A3E635, #84CC16)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20,
+            }}>🎓</div>
+            <div>
+              <div style={{ fontFamily: 'Outfit, sans-serif', fontWeight: 900, fontSize: 20, color: 'white' }}>Eduko</div>
+              <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.5)', fontWeight: 500 }}>AI Education Platform</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Navigation */}
+        <nav style={{ flex: 1, padding: '8px 0', overflowY: 'auto' }}>
+          {links.map(link => (
+            <NavLink
+              key={link.to}
+              to={link.to}
               onClick={() => setSidebarOpen(false)}
-            />
-            <motion.div
-              className="fixed inset-y-0 left-0 z-40 md:hidden"
-              initial={{ x: -260 }} animate={{ x: 0 }} exit={{ x: -260 }}
-              transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+              className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}
             >
-              {sidebarContent}
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
+              <link.icon size={18} className="icon" />
+              <span style={{ flex: 1 }}>{link.label}</span>
+              {link.badge && (
+                <span style={{
+                  background: 'linear-gradient(135deg, #A3E635, #84CC16)',
+                  color: '#1A2E05', borderRadius: 6, padding: '1px 6px',
+                  fontSize: 10, fontWeight: 900,
+                }}>
+                  {link.badge}
+                </span>
+              )}
+            </NavLink>
+          ))}
+        </nav>
+
+        {/* User Profile Card at bottom */}
+        <div style={{ padding: 16, borderTop: '1px solid rgba(255,255,255,0.1)', marginTop: 'auto' }}>
+          <div style={{
+            background: 'rgba(255,255,255,0.08)', borderRadius: 14, padding: '12px 14px',
+            display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10,
+          }}>
+            <div style={{
+              width: 36, height: 36, borderRadius: 10, flexShrink: 0,
+              background: 'linear-gradient(135deg, #A3E635, #84CC16)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              color: '#1A2E05', fontSize: 14, fontWeight: 900,
+            }}>
+              {initials}
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 700, fontSize: 13, color: 'white', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {user?.name || 'User'}
+              </div>
+              <div style={{
+                display: 'inline-block', background: 'rgba(163,230,53,0.2)', color: '#A3E635',
+                borderRadius: 999, padding: '1px 8px', fontSize: 10, fontWeight: 700, marginTop: 2,
+                textTransform: 'capitalize',
+              }}>
+                {user?.role || 'student'}
+              </div>
+            </div>
+          </div>
+          <button onClick={handleLogout}
+            style={{
+              width: '100%', display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'center',
+              padding: '8px 12px', borderRadius: 10,
+              background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.25)',
+              color: '#FCA5A5', cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: 'Outfit, sans-serif',
+              transition: 'all 0.2s',
+            }}
+            onMouseEnter={e => e.currentTarget.style.background = 'rgba(239,68,68,0.25)'}
+            onMouseLeave={e => e.currentTarget.style.background = 'rgba(239,68,68,0.15)'}>
+            <FiLogOut size={14} /> Sign Out
+          </button>
+        </div>
+      </aside>
     </>
   )
 }

@@ -2,104 +2,120 @@
 
 namespace App\Http\Controllers;
 
-use App\Jobs\ProcessAIChat;
-use App\Jobs\GenerateLearningPlan;
-use App\Models\Student;
-use App\Services\AIService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Http;
 
 class AIController extends Controller
 {
-    public function __construct(private AIService $ai) {}
+    protected string $aiUrl;
 
-    // POST /api/ask-ai
+    public function __construct()
+    {
+        $this->aiUrl = rtrim(config('services.ai.url', env('AI_SERVICE_URL', 'http://localhost:4000')), '/');
+    }
+
+    /**
+     * POST /api/ask-ai
+     * Forward chat to FastAPI RAG service
+     */
     public function chat(Request $request)
     {
-        $data = $request->validate([
-            'message'  => 'required|string|max:2000',
-            'language' => 'nullable|in:en,hi,pa',
+        $validated = $request->validate([
+            'message'  => 'required|string|min:1|max:4000',
+            'language' => 'nullable|string|in:hi,pa,en',
             'history'  => 'nullable|array',
         ]);
 
-        $user = $request->user();
-
-        // Dispatch to Redis queue; return job ID immediately for polling
-        // For simple usage, call AI service directly (sync) with 30s timeout
         try {
-            $result = $this->ai->chat(
-                message:  $data['message'],
-                language: $data['language'] ?? $user->language ?? 'hi',
-                userId:   (string) $user->_id,
-                history:  $data['history'] ?? [],
-            );
+            $response = Http::timeout(60)->post("{$this->aiUrl}/ai/chat", [
+                'message'  => $validated['message'],
+                'language' => $validated['language'] ?? 'hi',
+                'user_id'  => (string) $request->user()->_id,
+                'history'  => $validated['history'] ?? [],
+            ]);
 
-            return response()->json(['response' => $result]);
+            if ($response->successful()) {
+                return response()->json($response->json());
+            }
+
+            return response()->json(['response' => 'AI service is unavailable. Please try again.'], 503);
         } catch (\Exception $e) {
-            // Queue for async if AI service is slow
-            $jobId = uniqid('chat_', true);
-            ProcessAIChat::dispatch($user->_id, $data)->onQueue('ai');
-            return response()->json(['job_id' => $jobId, 'status' => 'queued'], 202);
+            return response()->json(['response' => 'AI service error. Please try again.'], 503);
         }
     }
 
-    // POST /api/generate-plan
+    /**
+     * POST /api/generate-plan
+     * Dispatch async plan generation job and return 202
+     */
     public function generatePlan(Request $request)
     {
-        $user    = $request->user();
-        $student = Student::where('user_id', $user->_id)->first();
+        $userId = (string) $request->user()->_id;
+        \App\Jobs\GenerateLearningPlanJob::dispatch($userId);
 
-        if (! $student) {
-            return response()->json(['error' => 'Student profile not found'], 404);
-        }
-
-        try {
-            $plan = $this->ai->generateLearningPlan(
-                studentId:   (string) $student->_id,
-                gradeLevel:  $student->grade_level ?? 'Class 6',
-                language:    $user->language ?? 'hi',
-                progressData: $student->progress_summary ?? [],
-            );
-
-            return response()->json($plan);
-        } catch (\Exception $e) {
-            GenerateLearningPlan::dispatch($student->_id)->onQueue('ai');
-            return response()->json(['status' => 'generating', 'message' => 'Plan is being generated.'], 202);
-        }
+        return response()->json([
+            'status'  => 'queued',
+            'message' => 'Learning plan generation started. Check /api/learning-plan in a moment.',
+        ], 202);
     }
 
-    // POST /api/translate
+    /**
+     * POST /api/translate
+     */
     public function translate(Request $request)
     {
-        $data = $request->validate([
-            'text'     => 'required|string',
-            'target'   => 'required|in:en,hi,pa',
+        $validated = $request->validate([
+            'text'            => 'required|string|min:1|max:10000',
+            'target_language' => 'required|string|in:hi,pa,en',
+            'grade_level'     => 'nullable|integer|min:1|max:12',
+            'simplify'        => 'nullable|boolean',
         ]);
 
-        $result = $this->ai->translate($data['text'], $data['target']);
-
-        return response()->json(['translated' => $result]);
+        try {
+            $response = Http::timeout(30)->post("{$this->aiUrl}/ai/translate", $validated);
+            return response()->json($response->json());
+        } catch (\Exception $e) {
+            return response()->json(['error' => 'Translation service unavailable.'], 503);
+        }
     }
 
-    // POST /api/speech-to-text
+    /**
+     * POST /api/speech-to-text
+     * Forward audio file to FastAPI
+     */
     public function speechToText(Request $request)
     {
-        $request->validate(['audio' => 'required|file|mimes:webm,mp3,wav,ogg|max:10240']);
+        $request->validate(['audio' => 'required|file|mimes:wav,mp3,webm,ogg,m4a|max:20480']);
 
-        $path   = $request->file('audio')->store('temp_audio');
-        $result = $this->ai->speechToText(storage_path('app/' . $path));
+        try {
+            $file     = $request->file('audio');
+            $response = Http::timeout(60)
+                ->attach('audio', file_get_contents($file->getRealPath()), $file->getClientOriginalName())
+                ->post("{$this->aiUrl}/ai/speech-to-text");
 
-        return response()->json(['text' => $result]);
+            return response()->json($response->json());
+        } catch (\Exception $e) {
+            return response()->json(['error' => 'Speech-to-text service unavailable.'], 503);
+        }
     }
 
-    // POST /api/ocr
+    /**
+     * POST /api/ocr
+     * Forward image file to FastAPI
+     */
     public function ocr(Request $request)
     {
-        $request->validate(['image' => 'required|image|max:5120']);
+        $request->validate(['image' => 'required|image|max:10240']);
 
-        $path   = $request->file('image')->store('temp_images');
-        $result = $this->ai->ocr(storage_path('app/' . $path));
+        try {
+            $file     = $request->file('image');
+            $response = Http::timeout(60)
+                ->attach('image', file_get_contents($file->getRealPath()), $file->getClientOriginalName())
+                ->post("{$this->aiUrl}/ai/ocr");
 
-        return response()->json(['text' => $result]);
+            return response()->json($response->json());
+        } catch (\Exception $e) {
+            return response()->json(['error' => 'OCR service unavailable.'], 503);
+        }
     }
 }

@@ -3,122 +3,180 @@ import { Link, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { useTranslation } from 'react-i18next'
 import { authAPI } from '../api/client'
-import { useAuth } from '../hooks/useAuth'
-import { FiUserPlus, FiEye, FiEyeOff } from 'react-icons/fi'
+import useStore from '../store/useStore'
+import { FiUser, FiMail, FiLock, FiArrowRight, FiEye, FiEyeOff, FiCheck } from 'react-icons/fi'
 
-const GRADES = ['Class 1','Class 2','Class 3','Class 4','Class 5','Class 6','Class 7','Class 8','Class 9','Class 10','Class 11','Class 12']
+const ROLES = [
+  { value: 'student',   label: 'Student',   emoji: '👨‍🎓', desc: 'I want to learn', color: '#8B5CF6' },
+  { value: 'teacher',   label: 'Teacher',   emoji: '👨‍🏫', desc: 'I teach students', color: '#10B981' },
+  { value: 'volunteer', label: 'Volunteer', emoji: '🤝', desc: 'I want to help',   color: '#F472B6' },
+]
 
 export default function Register() {
   const { t } = useTranslation()
-  const { setUser, setToken } = useAuth()
   const navigate = useNavigate()
-  const [form, setForm] = useState({ name: '', phone: '', password: '', role: 'student', grade_level: 'Class 6', language: 'hi' })
-  const [showPass, setShowPass] = useState(false)
+  const { setUser, setToken } = useStore()
+  const [step, setStep] = useState(1)
+  const [form, setForm] = useState({ name: '', email: '', password: '', confirm: '', role: 'student', grade_level: 8 })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-
-  const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+  const [showPass, setShowPass] = useState(false)
 
   const handleSubmit = async (e) => {
     e.preventDefault()
-    setError('')
-    if (form.password.length < 6) { setError('Password must be at least 6 characters'); return }
-    setLoading(true)
+    if (form.password !== form.confirm) { setError('Passwords do not match.'); return }
+    if (form.password.length < 8)        { setError('Password must be at least 8 characters.'); return }
+    setError(''); setLoading(true)
     try {
-      const { data } = await authAPI.register(form)
+      const { data } = await authAPI.register({
+        name: form.name, email: form.email, password: form.password,
+        role: form.role, grade_level: form.grade_level,
+      })
       setToken(data.token)
       setUser(data.user)
-      navigate('/dashboard')
+      if (data.user?.role === 'teacher') navigate('/teacher')
+      else if (data.user?.role === 'volunteer') navigate('/volunteers')
+      else navigate('/dashboard')
     } catch (err) {
-      setError(err.response?.data?.message || 'Registration failed. Please try again.')
+      setError(err.response?.data?.message || err.response?.data?.errors?.email?.[0] || 'Registration failed. Please try again.')
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-6"
-      style={{ background: 'linear-gradient(135deg, #f0fdf4 0%, #eff6ff 100%)' }}>
-      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-lg">
-        <div className="surface-card p-8">
-          <div className="text-center mb-8">
-            <div className="w-14 h-14 bg-primary-600 rounded-2xl flex items-center justify-center text-white text-2xl font-bold mx-auto mb-4">E</div>
-            <h1 className="text-2xl font-bold text-slate-800">Join Eduko</h1>
-            <p className="text-slate-500 text-sm mt-1">Create your free account</p>
+    <div style={{ minHeight: '100vh', background: '#FAFAF5', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        style={{ width: '100%', maxWidth: 520, background: 'white', borderRadius: 28, boxShadow: '0 20px 60px rgba(139,92,246,0.15)', overflow: 'hidden' }}>
+
+        {/* Header Banner */}
+        <div style={{ background: 'linear-gradient(135deg, #7C3AED 0%, #8B5CF6 60%, #A78BFA 100%)', padding: '32px 40px', textAlign: 'center' }}>
+          <div style={{ fontSize: 40, marginBottom: 8 }}>🎓</div>
+          <h1 style={{ fontFamily: 'Outfit, sans-serif', fontWeight: 900, fontSize: 26, color: 'white', marginBottom: 6 }}>
+            Join Eduko Free
+          </h1>
+          <p style={{ color: 'rgba(255,255,255,0.8)', fontSize: 14 }}>AI-powered learning in Hindi, Punjabi & English</p>
+        </div>
+
+        <div style={{ padding: '32px 40px' }}>
+          {/* Role Selector */}
+          <div style={{ marginBottom: 24 }}>
+            <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#374151', marginBottom: 10, fontFamily: 'Outfit, sans-serif' }}>
+              I am a...
+            </label>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
+              {ROLES.map(r => (
+                <button key={r.value} type="button" onClick={() => setForm(f => ({ ...f, role: r.value }))}
+                  style={{
+                    padding: '14px 8px', borderRadius: 14, textAlign: 'center', cursor: 'pointer', transition: 'all 0.2s',
+                    border: `2px solid ${form.role === r.value ? r.color : '#E8E3F0'}`,
+                    background: form.role === r.value ? r.color + '12' : 'white',
+                    position: 'relative',
+                  }}>
+                  {form.role === r.value && (
+                    <div style={{ position: 'absolute', top: 6, right: 6, width: 18, height: 18, borderRadius: '50%', background: r.color, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <FiCheck size={10} color="white" />
+                    </div>
+                  )}
+                  <div style={{ fontSize: 24, marginBottom: 4 }}>{r.emoji}</div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: form.role === r.value ? r.color : '#374151', fontFamily: 'Outfit, sans-serif' }}>{r.label}</div>
+                  <div style={{ fontSize: 10, color: '#94A3B8', marginTop: 2 }}>{r.desc}</div>
+                </button>
+              ))}
+            </div>
           </div>
 
+          {/* Error */}
           {error && (
-            <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-3 text-sm mb-5">⚠ {error}</div>
+            <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 10, padding: '10px 14px', color: '#B91C1C', fontSize: 13, marginBottom: 16, fontWeight: 600 }}>
+              ⚠️ {error}
+            </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit}>
             <div className="form-group">
-              <label className="form-label">{t('name')}</label>
-              <input id="reg-name" type="text" className="form-input" placeholder="Your full name" value={form.name} onChange={e => set('name', e.target.value)} required />
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">{t('phone')}</label>
-              <input id="reg-phone" type="tel" className="form-input" placeholder="10-digit mobile number" value={form.phone} onChange={e => set('phone', e.target.value)} required />
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">{t('password')}</label>
-              <div className="relative">
-                <input id="reg-password" type={showPass ? 'text' : 'password'} className="form-input pr-12" placeholder="Min. 6 characters" value={form.password} onChange={e => set('password', e.target.value)} required />
-                <button type="button" onClick={() => setShowPass(!showPass)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
-                  {showPass ? <FiEyeOff size={18} /> : <FiEye size={18} />}
-                </button>
+              <label className="form-label">Full Name</label>
+              <div style={{ position: 'relative' }}>
+                <FiUser style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: '#94A3B8' }} size={16} />
+                <input type="text" className="form-input" style={{ paddingLeft: 42 }}
+                  placeholder="Arjun Kumar" required
+                  value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
               </div>
             </div>
 
-            {/* Role */}
             <div className="form-group">
-              <label className="form-label">{t('role')}</label>
-              <div className="grid grid-cols-3 gap-2">
-                {['student','teacher','volunteer'].map(r => (
-                  <button type="button" key={r} onClick={() => set('role', r)}
-                    className={`py-2.5 rounded-xl border-2 text-sm font-semibold capitalize transition-all
-                      ${form.role === r ? 'border-primary-500 bg-primary-50 text-primary-700' : 'border-slate-200 text-slate-600 hover:border-slate-300'}`}>
-                    {t(r)}
-                  </button>
-                ))}
+              <label className="form-label">Email Address</label>
+              <div style={{ position: 'relative' }}>
+                <FiMail style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: '#94A3B8' }} size={16} />
+                <input type="email" className="form-input" style={{ paddingLeft: 42 }}
+                  placeholder="arjun@example.com" required
+                  value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} />
               </div>
             </div>
 
-            {/* Grade (student only) */}
             {form.role === 'student' && (
               <div className="form-group">
-                <label className="form-label">{t('grade')}</label>
-                <select id="reg-grade" className="form-input" value={form.grade_level} onChange={e => set('grade_level', e.target.value)}>
-                  {GRADES.map(g => <option key={g}>{g}</option>)}
+                <label className="form-label">Class / Grade Level</label>
+                <select className="form-input"
+                  value={form.grade_level} onChange={e => setForm(f => ({ ...f, grade_level: Number(e.target.value) }))}>
+                  {[5,6,7,8,9,10,11,12].map(g => <option key={g} value={g}>Class {g}</option>)}
                 </select>
               </div>
             )}
 
-            {/* Language */}
             <div className="form-group">
-              <label className="form-label">Preferred {t('language')}</label>
-              <div className="grid grid-cols-3 gap-2">
-                {[{code:'en',label:'English'},{code:'hi',label:'हिंदी'},{code:'pa',label:'ਪੰਜਾਬੀ'}].map(l => (
-                  <button type="button" key={l.code} onClick={() => set('language', l.code)}
-                    className={`py-2.5 rounded-xl border-2 text-sm font-semibold transition-all
-                      ${form.language === l.code ? 'border-primary-500 bg-primary-50 text-primary-700' : 'border-slate-200 text-slate-600 hover:border-slate-300'}`}>
-                    {l.label}
-                  </button>
-                ))}
+              <label className="form-label">Password</label>
+              <div style={{ position: 'relative' }}>
+                <FiLock style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: '#94A3B8' }} size={16} />
+                <input type={showPass ? 'text' : 'password'} className="form-input" style={{ paddingLeft: 42, paddingRight: 42 }}
+                  placeholder="Min 8 characters" required
+                  value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} />
+                <button type="button" onClick={() => setShowPass(p => !p)}
+                  style={{ position: 'absolute', right: 14, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#94A3B8' }}>
+                  {showPass ? <FiEyeOff size={16} /> : <FiEye size={16} />}
+                </button>
               </div>
             </div>
 
-            <button id="reg-submit" type="submit" disabled={loading} className="btn btn-primary btn-full btn-lg gap-2 mt-2">
-              {loading ? <span className="animate-spin">↻</span> : <FiUserPlus size={18} />}
-              {loading ? 'Creating account...' : t('registerBtn')}
+            <div className="form-group">
+              <label className="form-label">Confirm Password</label>
+              <div style={{ position: 'relative' }}>
+                <FiLock style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: '#94A3B8' }} size={16} />
+                <input type="password" className="form-input" style={{ paddingLeft: 42 }}
+                  placeholder="Re-enter password" required
+                  value={form.confirm} onChange={e => setForm(f => ({ ...f, confirm: e.target.value }))} />
+              </div>
+            </div>
+
+            {/* AI Features notice */}
+            <div style={{ background: '#F3F0FF', borderRadius: 12, padding: '12px 16px', marginBottom: 20, display: 'flex', gap: 10 }}>
+              <span style={{ fontSize: 20 }}>🤖</span>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 12, color: '#7C3AED', fontFamily: 'Outfit, sans-serif', marginBottom: 2 }}>
+                  AI Features Included
+                </div>
+                <div style={{ fontSize: 11, color: '#6D28D9', lineHeight: 1.5 }}>
+                  AI Tutor (Hindi/Punjabi) · Adaptive Study Plans · Voice & OCR Input · Offline Access
+                </div>
+              </div>
+            </div>
+
+            <button type="submit" disabled={loading} className="btn btn-purple btn-full btn-lg">
+              {loading ? 'Creating Account...' : (
+                <span style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'center' }}>
+                  Create Free Account <FiArrowRight />
+                </span>
+              )}
             </button>
           </form>
 
-          <p className="text-center text-sm text-slate-500 mt-6">
-            {t('hasAccount')}{' '}
-            <Link to="/login" className="text-primary-600 font-semibold hover:underline">{t('loginBtn')}</Link>
+          <p style={{ marginTop: 20, fontSize: 14, color: '#64748B', textAlign: 'center' }}>
+            Already have an account?{' '}
+            <Link to="/login" style={{ color: '#8B5CF6', fontWeight: 700, textDecoration: 'none' }}>
+              Sign in →
+            </Link>
           </p>
         </div>
       </motion.div>

@@ -1,36 +1,180 @@
-from fastapi import APIRouter
-from pydantic import BaseModel
+"""
+translate.py — Multilingual Content Engine
+Translates and simplifies educational content using Gemini 2.5 Flash.
+Supports English, Hindi, and Punjabi with grade-appropriate simplification
+and rural Indian context examples.
+"""
+
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel, Field
+from typing import Optional
 from services.rag_service import get_llm, LANGUAGE_NAMES
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+# Full language names for script guidance
+LANGUAGE_SCRIPT_NOTES = {
+    "hi": "Hindi (Devanagari script)",
+    "pa": "Punjabi (Gurmukhi script)",
+    "en": "English (Latin script)",
+}
+
+
+# ── Pydantic models ───────────────────────────────────────────────────────────
 
 class TranslateRequest(BaseModel):
-    text: str
-    target: str = "hi"  # en | hi | pa
-    simplify: bool = False
+    text: str = Field(..., min_length=1, max_length=5000)
+    target_language: str = Field(default="hi", pattern="^(hi|pa|en)$")
+    grade_level: int = Field(default=8, ge=5, le=12)
+    simplify: bool = True
 
 
 class TranslateResponse(BaseModel):
-    translated: str
-    target: str
+    translated_text: str
+    language: str
+    grade_level: int
 
+
+class TranslateLessonRequest(BaseModel):
+    title: str = Field(..., min_length=1)
+    content: str = Field(..., min_length=1, max_length=10000)
+    target_language: str = Field(default="hi", pattern="^(hi|pa|en)$")
+    grade_level: int = Field(default=8, ge=5, le=12)
+
+
+class TranslateLessonResponse(BaseModel):
+    title: str
+    content: str
+    language: str
+
+
+# ── Shared helper ─────────────────────────────────────────────────────────────
+
+def _build_translate_prompt(
+    text: str,
+    target_language: str,
+    grade_level: int,
+    simplify: bool,
+    is_title: bool = False,
+) -> str:
+    lang_full = LANGUAGE_SCRIPT_NOTES.get(target_language, "Hindi (Devanagari script)")
+    lang_name = LANGUAGE_NAMES.get(target_language, "Hindi")
+
+    reading_level = "simple words a Class 5-6 student understands" if grade_level <= 7 \
+        else "clear words a Class 8-10 student can follow" if grade_level <= 10 \
+        else "standard academic language for Class 11-12"
+
+    simplify_block = f"""
+SIMPLIFICATION RULES (apply all):
+- Use {reading_level}.
+- Replace technical jargon with common everyday words.
+- Keep sentences short (under 15 words each).
+- Use relatable examples from rural Indian life (e.g., farming, village markets, rivers, crops, festivals).
+- Break long sentences into two shorter ones.
+- Maintain the educational meaning exactly.
+""" if simplify else ""
+
+    item_type = "title" if is_title else "educational text"
+
+    return f"""You are an expert multilingual educational translator for Indian school students (Grade {grade_level}).
+
+TASK: Translate the following {item_type} to {lang_full}.
+{simplify_block}
+CRITICAL RULES:
+- Return ONLY the translated {item_type}. No explanations, no notes, no "Translation:" prefix.
+- Write in proper {lang_name} using the correct script ({lang_full}).
+- Preserve all numbers and proper nouns (names of places, people) as-is or transliterate them.
+- Do NOT skip any part of the text.
+- Do NOT add markdown formatting.
+
+{item_type.upper()} TO TRANSLATE:
+{text}
+
+TRANSLATED {item_type.upper()}:"""
+
+
+# ── Endpoints ─────────────────────────────────────────────────────────────────
 
 @router.post("/translate", response_model=TranslateResponse)
 async def translate(req: TranslateRequest):
-    """Translate and optionally simplify educational content."""
+    """
+    Translate and optionally simplify educational text.
+    Supports hi (Hindi), pa (Punjabi), en (English).
+    Automatically adapts vocabulary to the given grade level.
+    """
+    if not req.text.strip():
+        raise HTTPException(status_code=400, detail="text cannot be empty")
 
-    lang_name = LANGUAGE_NAMES.get(req.target, "Hindi")
-    simplify_note = "Also simplify the language for a school student. Use simple words." if req.simplify else ""
+    prompt = _build_translate_prompt(
+        text=req.text,
+        target_language=req.target_language,
+        grade_level=req.grade_level,
+        simplify=req.simplify,
+    )
 
-    prompt = f"""Translate the following educational text to {lang_name}.
-{simplify_note}
-Only return the translated text, nothing else.
+    try:
+        llm = get_llm()
+        result = llm.invoke(prompt)
+        translated = result.content if hasattr(result, "content") else str(result)
+        translated = translated.strip()
+    except Exception as e:
+        logger.error(f"Translation error: {e}")
+        raise HTTPException(status_code=500, detail=f"Translation failed: {str(e)}")
 
-Text: {req.text}"""
+    return TranslateResponse(
+        translated_text=translated,
+        language=req.target_language,
+        grade_level=req.grade_level,
+    )
 
-    llm    = get_llm()
-    result = llm.invoke(prompt)
-    translated = result.content if hasattr(result, "content") else str(result)
 
-    return TranslateResponse(translated=translated.strip(), target=req.target)
+@router.post("/translate-lesson", response_model=TranslateLessonResponse)
+async def translate_lesson(req: TranslateLessonRequest):
+    """
+    Translate a full lesson (title + content) to the target language.
+    Simplifies content to be grade-appropriate with rural Indian context.
+    """
+    if not req.content.strip():
+        raise HTTPException(status_code=400, detail="content cannot be empty")
+
+    try:
+        llm = get_llm()
+
+        # Translate title
+        title_prompt = _build_translate_prompt(
+            text=req.title,
+            target_language=req.target_language,
+            grade_level=req.grade_level,
+            simplify=True,
+            is_title=True,
+        )
+        title_result = llm.invoke(title_prompt)
+        translated_title = (
+            title_result.content if hasattr(title_result, "content") else str(title_result)
+        ).strip()
+
+        # Translate content
+        content_prompt = _build_translate_prompt(
+            text=req.content,
+            target_language=req.target_language,
+            grade_level=req.grade_level,
+            simplify=True,
+            is_title=False,
+        )
+        content_result = llm.invoke(content_prompt)
+        translated_content = (
+            content_result.content if hasattr(content_result, "content") else str(content_result)
+        ).strip()
+
+    except Exception as e:
+        logger.error(f"Lesson translation error: {e}")
+        raise HTTPException(status_code=500, detail=f"Lesson translation failed: {str(e)}")
+
+    return TranslateLessonResponse(
+        title=translated_title,
+        content=translated_content,
+        language=req.target_language,
+    )
