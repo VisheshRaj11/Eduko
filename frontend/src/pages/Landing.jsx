@@ -20,8 +20,10 @@ import {
   FiTwitter,
   FiGithub,
   FiLinkedin,
+  FiCpu,
+  FiMonitor,
 } from 'react-icons/fi'
-
+import { useTranslation } from 'react-i18next'
 import LanguageSwitcher from '../components/LanguageSwitcher'
 
 const features = [
@@ -75,7 +77,7 @@ const courses = [
     level: 'Beginner to Advanced',
     lessons: 48,
     students: '12.5k+',
-    icon: '📐',
+    icon: FiTrendingUp,
     gradient: 'linear-gradient(135deg, #667EEA, #764BA2)',
   },
   {
@@ -83,7 +85,7 @@ const courses = [
     level: 'All Levels',
     lessons: 36,
     students: '8.2k+',
-    icon: '🔬',
+    icon: FiCpu,
     gradient: 'linear-gradient(135deg, #F093FB, #F5576C)',
   },
   {
@@ -91,7 +93,7 @@ const courses = [
     level: 'Foundation',
     lessons: 24,
     students: '15.1k+',
-    icon: '💻',
+    icon: FiMonitor,
     gradient: 'linear-gradient(135deg, #4FACFE, #00F2FE)',
   },
 ]
@@ -104,11 +106,12 @@ const stats = [
 ]
 
 export default function Landing() {
+  const { t } = useTranslation()
   const [menuOpen, setMenuOpen] = useState(false)
   const [scrolled, setScrolled] = useState(false)
   const { scrollYProgress } = useScroll()
   const heroRef = useRef(null)
-  
+
   const heroOpacity = useTransform(scrollYProgress, [0, 0.3], [1, 0.8])
   const heroScale = useTransform(scrollYProgress, [0, 0.3], [1, 0.95])
 
@@ -185,17 +188,6 @@ export default function Landing() {
         @keyframes glow {
           0%, 100% { opacity: 0.4; }
           50% { opacity: 0.8; }
-        }
-        
-        @keyframes slideIn {
-          from {
-            opacity: 0;
-            transform: translateX(30px);
-          }
-          to {
-            opacity: 1;
-            transform: translateX(0);
-          }
         }
         
         .float-animation {
@@ -315,16 +307,14 @@ export default function Landing() {
                 width: 38,
                 height: 38,
                 borderRadius: 16,
-                // background: 'linear-gradient(135deg, #8B5CF6, #EC4899)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 fontSize: 22,
                 color: 'white',
-                // boxShadow: '0 10px 25px rgba(139,92,246,0.3)',
               }}
             >
-              <img src='./icon.png'/>
+              <img src="./icon.png" alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
             </div>
             <span
               style={{
@@ -366,7 +356,7 @@ export default function Landing() {
                 onMouseEnter={(e) => (e.target.style.color = '#8B5CF6')}
                 onMouseLeave={(e) => (e.target.style.color = '#4B5563')}
               >
-                {item === 'hero' ? 'Home' : item}
+                {t(item === 'hero' ? 'home' : item)}
               </button>
             ))}
           </nav>
@@ -395,7 +385,7 @@ export default function Landing() {
               onMouseEnter={(e) => (e.target.style.background = '#F3F4F6')}
               onMouseLeave={(e) => (e.target.style.background = 'transparent')}
             >
-              Login
+              {t('login')}
             </Link>
 
             <Link
@@ -420,7 +410,7 @@ export default function Landing() {
                 e.target.style.boxShadow = '0 8px 20px rgba(139,92,246,0.3)'
               }}
             >
-              Get Started
+              {t('getStartedNav')}
             </Link>
 
             {/* Mobile Menu Button */}
@@ -479,7 +469,7 @@ export default function Landing() {
                 borderBottom: '1px solid #E5E7EB',
               }}
             >
-              {item === 'hero' ? 'Home' : item}
+              {t(item === 'hero' ? 'home' : item)}
             </button>
           ))}
         </div>
@@ -530,7 +520,7 @@ export default function Landing() {
                   border: '1px solid rgba(139,92,246,0.2)',
                 }}
               >
-                🚀 AI Powered Education Platform
+                {t('heroBadge')}
               </motion.div>
 
               <motion.h1
@@ -545,7 +535,7 @@ export default function Landing() {
                   marginBottom: 24,
                 }}
               >
-                Learn Smarter
+                {t('heroTitle')}
                 <br />
                 <span
                   style={{
@@ -555,7 +545,7 @@ export default function Landing() {
                     backgroundClip: 'text',
                   }}
                 >
-                  Anywhere
+                  {t('heroAnywhere')}
                 </span>
               </motion.h1>
 
@@ -571,8 +561,7 @@ export default function Landing() {
                   marginBottom: 40,
                 }}
               >
-                AI-powered education platform built for rural India. Learn
-                offline, in your language, with personalized guidance.
+                {t('heroDesc')}
               </motion.p>
 
               <motion.div
@@ -611,12 +600,12 @@ export default function Landing() {
                     e.target.style.boxShadow = '0 20px 35px rgba(139,92,246,0.35)'
                   }}
                 >
-                  Start Learning
+                  {t('startLearning')}
                   <FiArrowRight />
                 </Link>
 
                 <button
-                  onClick={() => alert('🎥 Demo video coming soon!')}
+                  onClick={() => alert('Demo video coming soon!')}
                   style={{
                     border: '1px solid #E5E7EB',
                     background: 'white',
@@ -640,7 +629,7 @@ export default function Landing() {
                   }}
                 >
                   <FiPlay />
-                  Watch Demo
+                  {t('watchDemo')}
                 </button>
               </motion.div>
 
@@ -694,7 +683,7 @@ export default function Landing() {
               </motion.div>
             </div>
 
-            {/* Right Hero Graphic */}
+            {/* Right Hero - Responsive Image */}
             <motion.div
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
@@ -713,33 +702,18 @@ export default function Landing() {
                   boxShadow: '0 40px 80px rgba(139,92,246,0.3)',
                 }}
               >
-                <div
+                {/* Responsive Image */}
+                <img
+                  src="./hero.png"
+                  alt="Students learning in rural area"
                   style={{
-                    background: 'white',
+                    width: '100%',
+                    height: 'auto',
+                    objectFit: 'cover',
                     borderRadius: 30,
-                    padding: 40,
-                    minHeight: 500,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    flexDirection: 'column',
-                    gap: 20,
+                    display: 'block',
                   }}
-                >
-                  <div style={{ fontSize: 120 }}>👩‍🎓</div>
-                  <div
-                    style={{
-                      fontSize: 18,
-                      fontWeight: 600,
-                      color: '#8B5CF6',
-                      background: 'rgba(139,92,246,0.1)',
-                      padding: '8px 20px',
-                      borderRadius: 100,
-                    }}
-                  >
-                    AI-Powered Learning
-                  </div>
-                </div>
+                />
 
                 {/* Floating Cards */}
                 <motion.div
@@ -823,7 +797,7 @@ export default function Landing() {
                   marginBottom: 20,
                 }}
               >
-                Why Choose Us
+                {t('whyChooseUs')}
               </div>
               <h2
                 style={{
@@ -984,68 +958,72 @@ export default function Landing() {
                 gap: 32,
               }}
             >
-              {courses.map((course, i) => (
-                <motion.div
-                  key={i}
-                  initial={{ opacity: 0, scale: 0.95 }}
-                  whileInView={{ opacity: 1, scale: 1 }}
-                  viewport={{ once: true }}
-                  transition={{ delay: i * 0.1 }}
-                  whileHover={{ y: -8 }}
-                  style={{
-                    background: '#F9FAFB',
-                    borderRadius: 32,
-                    overflow: 'hidden',
-                    border: '1px solid #E5E7EB',
-                    transition: 'all 0.3s',
-                  }}
-                >
-                  <div
+              {courses.map((course, i) => {
+                const CourseIcon = course.icon
+                return (
+                  <motion.div
+                    key={i}
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    whileInView={{ opacity: 1, scale: 1 }}
+                    viewport={{ once: true }}
+                    transition={{ delay: i * 0.1 }}
+                    whileHover={{ y: -8 }}
                     style={{
-                      background: course.gradient,
-                      padding: 40,
-                      textAlign: 'center',
+                      background: '#F9FAFB',
+                      borderRadius: 32,
+                      overflow: 'hidden',
+                      border: '1px solid #E5E7EB',
+                      transition: 'all 0.3s',
                     }}
                   >
-                    <div style={{ fontSize: 64 }}>{course.icon}</div>
-                  </div>
-                  <div style={{ padding: 28 }}>
-                    <h3
-                      style={{
-                        fontSize: 22,
-                        fontWeight: 800,
-                        marginBottom: 12,
-                      }}
-                    >
-                      {course.title}
-                    </h3>
                     <div
                       style={{
-                        display: 'flex',
-                        gap: 16,
-                        marginBottom: 20,
-                        color: '#6B7280',
-                        fontSize: 14,
+                        background: course.gradient,
+                        padding: 40,
+                        textAlign: 'center',
+                        color: 'white',
                       }}
                     >
-                      <span>📚 {course.lessons} lessons</span>
-                      <span>👥 {course.students} students</span>
+                      <CourseIcon size={48} style={{ margin: '0 auto' }} />
                     </div>
-                    <div
-                      style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: 8,
-                        color: '#8B5CF6',
-                        fontWeight: 600,
-                        cursor: 'pointer',
-                      }}
-                    >
-                      Learn More <FiChevronRight size={18} />
+                    <div style={{ padding: 28 }}>
+                      <h3
+                        style={{
+                          fontSize: 22,
+                          fontWeight: 800,
+                          marginBottom: 12,
+                        }}
+                      >
+                        {course.title}
+                      </h3>
+                      <div
+                        style={{
+                          display: 'flex',
+                          gap: 16,
+                          marginBottom: 20,
+                          color: '#6B7280',
+                          fontSize: 14,
+                        }}
+                      >
+                        <span>Lessons: {course.lessons}</span>
+                        <span>Students: {course.students}</span>
+                      </div>
+                      <div
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 8,
+                          color: '#8B5CF6',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        Learn More <FiChevronRight size={18} />
+                      </div>
                     </div>
-                  </div>
-                </motion.div>
-              ))}
+                  </motion.div>
+                )
+              })}
             </div>
           </div>
         </section>
@@ -1156,7 +1134,7 @@ export default function Landing() {
                   color: 'white',
                 }}
               >
-                <div style={{ fontSize: 80, marginBottom: 20 }}>🌱</div>
+                <FiUsers size={80} style={{ marginBottom: 20, opacity: 0.9 }} />
                 <h3 style={{ fontSize: 28, fontWeight: 800, marginBottom: 16 }}>
                   50,000+ Students Impacted
                 </h3>
@@ -1294,14 +1272,16 @@ export default function Landing() {
                   width: 40,
                   height: 40,
                   borderRadius: 12,
-                  background: 'linear-gradient(135deg, #8B5CF6, #EC4899)',
+                  // background: 'linear-gradient(135deg, #8B5CF6, #EC4899)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   fontSize: 20,
+                  fontWeight: 'bold',
+                  color: 'white',
                 }}
               >
-                {/* <img src=''/> */}
+                 <img src="./icon.png" alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
               </div>
               <span style={{ fontSize: 22, fontWeight: 800 }}>Eduko</span>
             </div>
@@ -1310,9 +1290,9 @@ export default function Landing() {
             </p>
           </div>
           <div>
-            <h4 style={{ fontWeight: 700, marginBottom: 20 }}>Product</h4>
-            <ul style={{ listStyle: 'none', padding: 0 }}>
-              {['Features', 'Courses', 'Pricing', 'FAQ'].map((item) => (
+            {/* <h4 style={{ fontWeight: 700, marginBottom: 20 }}>Product</h4>
+            <ul style={{ listStyle: 'none', padding: 0 }}> */}
+              {/* {['Features', 'Courses', 'Pricing', 'FAQ'].map((item) => (
                 <li key={item} style={{ marginBottom: 12 }}>
                   <button
                     onClick={() => scrollToSection(item.toLowerCase())}
@@ -1327,10 +1307,10 @@ export default function Landing() {
                     {item}
                   </button>
                 </li>
-              ))}
-            </ul>
+              ))} */}
+            {/* </ul> */}
           </div>
-          <div>
+          {/* <div>
             <h4 style={{ fontWeight: 700, marginBottom: 20 }}>Company</h4>
             <ul style={{ listStyle: 'none', padding: 0 }}>
               {['About', 'Blog', 'Careers', 'Contact'].map((item) => (
@@ -1350,15 +1330,15 @@ export default function Landing() {
                 </li>
               ))}
             </ul>
-          </div>
-          <div>
+          </div> */}
+          {/* <div>
             <h4 style={{ fontWeight: 700, marginBottom: 20 }}>Connect</h4>
             <div style={{ display: 'flex', gap: 16 }}>
               <FiTwitter size={20} color="#6B7280" style={{ cursor: 'pointer' }} />
               <FiGithub size={20} color="#6B7280" style={{ cursor: 'pointer' }} />
               <FiLinkedin size={20} color="#6B7280" style={{ cursor: 'pointer' }} />
             </div>
-          </div>
+          </div> */}
         </div>
         <div
           style={{

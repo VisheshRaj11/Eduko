@@ -6,9 +6,11 @@ Generates personalised weekly study plans using Gemini 2.5 Flash.
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from typing import Optional
-from services.rag_service import get_llm, LANGUAGE_NAMES
+from services.rag_service import LANGUAGE_NAMES
+import google.generativeai as genai
 import json
 import logging
+import os
 from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
@@ -204,10 +206,10 @@ Return ONLY valid JSON (no markdown fences, no extra text) matching this EXACT s
 Generate the complete 7-day plan now:"""
 
     try:
-        llm = get_llm()
-        result = llm.invoke(prompt)
-        content = result.content if hasattr(result, "content") else str(result)
-        content = _clean_json(content)
+        genai.configure(api_key=os.getenv("GEMINI_API_KEY", ""))
+        model = genai.GenerativeModel(model_name="gemini-flash-lite-latest")
+        result = model.generate_content(prompt)
+        content = _clean_json(result.text)
         parsed = json.loads(content)
 
         # Validate / normalise structure

@@ -172,7 +172,7 @@ def _run_ocr_on_bytes(image_bytes: bytes, mime_type: str) -> str:
 
         uploaded_file = genai.upload_file(path=tmp_path, mime_type=canonical)
 
-        model = genai.GenerativeModel("gemini-2.5-flash-preview-04-17")
+        model = genai.GenerativeModel("gemini-flash-lite-latest")
         response = model.generate_content([OCR_PROMPT, uploaded_file])
         return response.text.strip()
 

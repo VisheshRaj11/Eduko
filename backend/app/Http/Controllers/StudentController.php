@@ -29,18 +29,20 @@ class StudentController extends Controller
             ->limit(10)
             ->get();
 
-        // Calculate streak (consecutive days with activity)
-        $streak = $this->calculateStreak($userId);
+        // Calculate Average Score across all quizzes
+        $avgScore = Progress::where('user_id', $userId)
+            ->whereIn('type', ['quiz', 'ai_quiz'])
+            ->avg('score') ?? 0;
 
-        // Lessons completed
+        // Lessons visited (duration / visited documents)
         $lessonsCompleted = Progress::where('user_id', $userId)
             ->where('type', 'lesson')
-            ->where('completed', true)
-            ->count();
+            ->distinct('lesson_id')
+            ->count('lesson_id');
 
-        // Quizzes taken
+        // Quizzes taken (both standard and AI)
         $quizzesTaken = Progress::where('user_id', $userId)
-            ->where('type', 'quiz')
+            ->whereIn('type', ['quiz', 'ai_quiz'])
             ->count();
 
         // Recent lessons
@@ -63,15 +65,35 @@ class StudentController extends Controller
         $plan = LearningPlan::where('user_id', $userId)->orderBy('created_at', 'desc')->first();
         $todayTasks = $this->getTodayTasks($plan);
 
+        // AI Quiz Performance
+        $aiPerformance = Progress::where('user_id', $userId)
+            ->where('type', 'ai_quiz')
+            ->whereNotNull('subject')
+            ->get()
+            ->groupBy('subject')
+            ->map(function ($items, $subject) {
+                $avgScore = round($items->avg('score'));
+                // Determine level based on average score
+                if ($avgScore >= 75) $level = 'Good';
+                elseif ($avgScore >= 50) $level = 'Avg';
+                else $level = 'Weak';
+                
+                return [
+                    'subject' => $subject,
+                    'percentage' => $avgScore,
+                    'level' => $level,
+                ];
+            })->values()->all();
+
         return response()->json([
-            'streak'             => $student?->streak ?? $streak,
-            'points'             => $student?->points ?? 0,
+            'avg_score'          => round($avgScore),
             'lessons_completed'  => $lessonsCompleted,
             'quizzes_taken'      => $quizzesTaken,
             'recent_lessons'     => $recentLessons,
             'today_tasks'        => $todayTasks,
             'badges'             => $student?->badges ?? [],
             'weekly_progress'    => $this->getWeeklyProgress($userId),
+            'ai_performance'     => $aiPerformance,
         ]);
     }
 
@@ -186,6 +208,31 @@ class StudentController extends Controller
             'cached_at'       => now()->toISOString(),
             'offline_version' => 1,
         ]);
+    }
+
+    /**
+     * POST /api/lessons/{id}/view
+     */
+    public function viewLesson(Request $request, $id)
+    {
+        $userId = (string) $request->user()->_id;
+        
+        // Find existing or create progress
+        $progress = Progress::firstOrCreate([
+            'user_id' => $userId,
+            'lesson_id' => $id,
+            'type' => 'lesson'
+        ], [
+            'completed' => false,
+            'completion_pct' => 0,
+        ]);
+        
+        // Mark as completed
+        $progress->completed = true;
+        $progress->completion_pct = 100;
+        $progress->save();
+        
+        return response()->json(['success' => true]);
     }
 
     // ── Private helpers ────────────────────────────────────────

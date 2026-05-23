@@ -23,25 +23,54 @@ class AIController extends Controller
         $validated = $request->validate([
             'message'  => 'required|string|min:1|max:4000',
             'language' => 'nullable|string|in:hi,pa,en',
+            'subject'  => 'nullable|string|max:100',
+            'lesson_id'=> 'nullable|string|max:100',
             'history'  => 'nullable|array',
         ]);
 
         try {
             $response = Http::timeout(60)->post("{$this->aiUrl}/ai/chat", [
                 'message'  => $validated['message'],
-                'language' => $validated['language'] ?? 'hi',
+                'language' => $validated['language'] ?? 'en',
+                'subject'  => $validated['subject'] ?? null,
+                'lesson_id'=> $validated['lesson_id'] ?? null,
                 'user_id'  => (string) $request->user()->_id,
                 'history'  => $validated['history'] ?? [],
             ]);
 
             if ($response->successful()) {
-                return response()->json($response->json());
+                $data = $response->json();
+                
+                \App\Models\ChatMessage::create([
+                    'user_id' => $request->user()->_id,
+                    'message' => $validated['message'],
+                    'response' => $data['response'] ?? '',
+                    'language' => $validated['language'] ?? 'en',
+                ]);
+
+                return response()->json($data);
             }
 
             return response()->json(['response' => 'AI service is unavailable. Please try again.'], 503);
         } catch (\Exception $e) {
             return response()->json(['response' => 'AI service error. Please try again.'], 503);
         }
+    }
+
+    /**
+     * GET /api/ask-ai/history
+     * Retrieve the last 50 Q&A pairs for the user
+     */
+    public function getHistory(Request $request)
+    {
+        $messages = \App\Models\ChatMessage::where('user_id', $request->user()->_id)
+            ->orderBy('created_at', 'desc')
+            ->limit(50)
+            ->get()
+            ->reverse()
+            ->values();
+
+        return response()->json($messages);
     }
 
     /**
@@ -85,12 +114,17 @@ class AIController extends Controller
      */
     public function speechToText(Request $request)
     {
-        $request->validate(['audio' => 'required|file|mimes:wav,mp3,webm,ogg,m4a|max:20480']);
+        $request->validate(['audio' => 'required|file|mimes:wav,mp3,webm,ogg,m4a,mp4|max:20480']);
 
         try {
             $file     = $request->file('audio');
+            $mime     = $file->getClientMimeType();
+            if (empty($mime) || $mime === 'application/octet-stream') {
+                $mime = 'audio/webm'; // Fallback
+            }
+
             $response = Http::timeout(60)
-                ->attach('audio', file_get_contents($file->getRealPath()), $file->getClientOriginalName())
+                ->attach('audio', file_get_contents($file->getRealPath()), $file->getClientOriginalName(), ['Content-Type' => $mime])
                 ->post("{$this->aiUrl}/ai/speech-to-text");
 
             return response()->json($response->json());

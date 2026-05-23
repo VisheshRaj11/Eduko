@@ -13,7 +13,7 @@ import logging
 from datetime import datetime, timedelta
 from functools import lru_cache
 
-from langchain_google_genai import ChatGoogleGenerativeAI
+import google.generativeai as genai
 from pydantic_settings import BaseSettings
 
 logger = logging.getLogger(__name__)
@@ -36,13 +36,15 @@ def _get_settings() -> _Settings:
     return _Settings()
 
 
-def _get_llm() -> ChatGoogleGenerativeAI:
+def _get_model() -> genai.GenerativeModel:
     s = _get_settings()
-    return ChatGoogleGenerativeAI(
-        model="gemini-2.5-flash-preview-04-17",
-        google_api_key=s.gemini_api_key,
-        temperature=0.3,
-        max_tokens=2048,
+    genai.configure(api_key=s.gemini_api_key)
+    return genai.GenerativeModel(
+        model_name="gemini-2.5-flash-lite",
+        generation_config=genai.types.GenerationConfig(
+            temperature=0.3,
+            max_output_tokens=2048,
+        ),
     )
 
 
@@ -126,9 +128,8 @@ Write a brief, encouraging 2-3 sentence PERFORMANCE SUMMARY for this student tha
 Return ONLY the summary text (no labels, no JSON):"""
 
     try:
-        llm = _get_llm()
-        result = llm.invoke(prompt)
-        summary = (result.content if hasattr(result, "content") else str(result)).strip()
+        result = _get_model().generate_content(prompt)
+        summary = result.text.strip()
     except Exception as e:
         logger.warning(f"Performance summary LLM error: {e}")
         summary = (
@@ -222,9 +223,8 @@ Return ONLY valid JSON (no markdown):
 }}"""
 
     try:
-        llm = _get_llm()
-        result = llm.invoke(prompt)
-        content = result.content if hasattr(result, "content") else str(result)
+        result = _get_model().generate_content(prompt)
+        content = result.text
         content = _clean_json(content)
         parsed = json.loads(content)
 
@@ -333,9 +333,8 @@ Return ONLY valid JSON array (no markdown):
 ]"""
 
     try:
-        llm = _get_llm()
-        result = llm.invoke(prompt)
-        content = result.content if hasattr(result, "content") else str(result)
+        result = _get_model().generate_content(prompt)
+        content = result.text
         content = _clean_json(content)
         recommendations = json.loads(content)
         if not isinstance(recommendations, list):

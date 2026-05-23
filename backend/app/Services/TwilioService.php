@@ -2,12 +2,11 @@
 
 namespace App\Services;
 
-use Twilio\Rest\Client;
 use Illuminate\Support\Facades\Log;
 
 class TwilioService
 {
-    protected Client $twilio;
+    protected $twilio; // Removed explicit Client type to prevent crash if SDK is missing
     protected string $from;
 
     public function __construct()
@@ -16,8 +15,8 @@ class TwilioService
         $token = config('services.twilio.token');
         $this->from = config('services.twilio.from', '');
 
-        if ($sid && $token) {
-            $this->twilio = new Client($sid, $token);
+        if ($sid && $token && $sid !== 'your_twilio_sid_here' && class_exists('\Twilio\Rest\Client')) {
+            $this->twilio = new \Twilio\Rest\Client($sid, $token);
         }
     }
 

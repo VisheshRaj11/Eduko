@@ -8,7 +8,9 @@ and rural Indian context examples.
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from typing import Optional
-from services.rag_service import get_llm, LANGUAGE_NAMES
+from services.rag_service import LANGUAGE_NAMES
+import google.generativeai as genai
+import os
 import logging
 
 logger = logging.getLogger(__name__)
@@ -116,10 +118,10 @@ async def translate(req: TranslateRequest):
     )
 
     try:
-        llm = get_llm()
-        result = llm.invoke(prompt)
-        translated = result.content if hasattr(result, "content") else str(result)
-        translated = translated.strip()
+        genai.configure(api_key=os.getenv("GEMINI_API_KEY", ""))
+        model = genai.GenerativeModel(model_name="gemini-flash-lite-latest")
+        result = model.generate_content(prompt)
+        translated = result.text.strip()
     except Exception as e:
         logger.error(f"Translation error: {e}")
         raise HTTPException(status_code=500, detail=f"Translation failed: {str(e)}")
@@ -141,7 +143,8 @@ async def translate_lesson(req: TranslateLessonRequest):
         raise HTTPException(status_code=400, detail="content cannot be empty")
 
     try:
-        llm = get_llm()
+        genai.configure(api_key=os.getenv("GEMINI_API_KEY", ""))
+        model = genai.GenerativeModel(model_name="gemini-flash-lite-latest")
 
         # Translate title
         title_prompt = _build_translate_prompt(
@@ -151,10 +154,8 @@ async def translate_lesson(req: TranslateLessonRequest):
             simplify=True,
             is_title=True,
         )
-        title_result = llm.invoke(title_prompt)
-        translated_title = (
-            title_result.content if hasattr(title_result, "content") else str(title_result)
-        ).strip()
+        title_result = model.generate_content(title_prompt)
+        translated_title = title_result.text.strip()
 
         # Translate content
         content_prompt = _build_translate_prompt(
@@ -164,10 +165,8 @@ async def translate_lesson(req: TranslateLessonRequest):
             simplify=True,
             is_title=False,
         )
-        content_result = llm.invoke(content_prompt)
-        translated_content = (
-            content_result.content if hasattr(content_result, "content") else str(content_result)
-        ).strip()
+        content_result = model.generate_content(content_prompt)
+        translated_content = content_result.text.strip()
 
     except Exception as e:
         logger.error(f"Lesson translation error: {e}")

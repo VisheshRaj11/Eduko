@@ -13,7 +13,7 @@ import json
 import logging
 from functools import lru_cache
 
-from langchain_google_genai import ChatGoogleGenerativeAI
+import google.generativeai as genai
 from pydantic_settings import BaseSettings
 
 logger = logging.getLogger(__name__)
@@ -41,13 +41,15 @@ def _get_settings() -> _Settings:
     return _Settings()
 
 
-def _get_llm() -> ChatGoogleGenerativeAI:
+def _get_model() -> genai.GenerativeModel:
     s = _get_settings()
-    return ChatGoogleGenerativeAI(
-        model="gemini-2.5-flash-preview-04-17",
-        google_api_key=s.gemini_api_key,
-        temperature=0.3,
-        max_tokens=2048,
+    genai.configure(api_key=s.gemini_api_key)
+    return genai.GenerativeModel(
+        model_name="gemini-2.5-flash-lite",
+        generation_config=genai.types.GenerationConfig(
+            temperature=0.3,
+            max_output_tokens=2048,
+        ),
     )
 
 
@@ -112,9 +114,8 @@ TEXT TO TRANSLATE:
 TRANSLATED TEXT:"""
 
     try:
-        llm = _get_llm()
-        result = llm.invoke(prompt)
-        return (result.content if hasattr(result, "content") else str(result)).strip()
+        result = _get_model().generate_content(prompt)
+        return result.text.strip()
     except Exception as e:
         logger.error(f"translate_content error: {e}")
         raise RuntimeError(f"Translation failed: {e}") from e
@@ -182,9 +183,8 @@ Return ONLY valid JSON array (no markdown):
 ]"""
 
     try:
-        llm = _get_llm()
-        result = llm.invoke(prompt)
-        content = result.content if hasattr(result, "content") else str(result)
+        result = _get_model().generate_content(prompt)
+        content = result.text
         content = _clean_json(content)
         exercises = json.loads(content)
 
@@ -256,9 +256,8 @@ ORIGINAL TEXT:
 SIMPLIFIED TEXT:"""
 
     try:
-        llm = _get_llm()
-        result = llm.invoke(prompt)
-        return (result.content if hasattr(result, "content") else str(result)).strip()
+        result = _get_model().generate_content(prompt)
+        return result.text.strip()
     except Exception as e:
         logger.error(f"simplify_for_grade error: {e}")
         raise RuntimeError(f"Simplification failed: {e}") from e

@@ -6,6 +6,8 @@ use App\Http\Controllers\StudentController;
 use App\Http\Controllers\TeacherController;
 use App\Http\Controllers\LessonController;
 use App\Http\Controllers\AIController;
+use App\Http\Controllers\AIQuizController;
+use App\Http\Controllers\AIFlashcardController;
 use App\Http\Controllers\VolunteerController;
 use App\Http\Controllers\NotificationController;
 
@@ -27,6 +29,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/quiz/submit',                      [StudentController::class, 'submitQuiz']);
     Route::get('/progress',                          [StudentController::class, 'progress']);
     Route::get('/lessons/{id}/download',             [StudentController::class, 'downloadLesson']);
+    Route::post('/lessons/{id}/view',                [StudentController::class, 'viewLesson']);
 
     // ── Lessons (shared) ─────────────────────────────────────
     Route::get('/lessons',                           [LessonController::class, 'index']);
@@ -42,6 +45,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/analytics',                     [TeacherController::class, 'analytics']);
         Route::post('/upload-lesson',                [TeacherController::class, 'uploadLesson']);
         Route::post('/send-sms',                     [TeacherController::class, 'sendSMS']);
+        Route::post('/reingest-all',                 [TeacherController::class, 'reingestAll']);
     });
 
     // Legacy analytics route
@@ -49,11 +53,19 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/analytics/student',                 [StudentController::class, 'progress']);
 
     // ── AI ───────────────────────────────────────────────────
+    Route::get('/ask-ai/history',                    [AIController::class, 'getHistory']);
     Route::post('/ask-ai',                           [AIController::class, 'chat']);
     Route::post('/generate-plan',                    [AIController::class, 'generatePlan']);
     Route::post('/translate',                        [AIController::class, 'translate']);
     Route::post('/speech-to-text',                   [AIController::class, 'speechToText']);
     Route::post('/ocr',                              [AIController::class, 'ocr']);
+
+    // ── AI Quiz ──────────────────────────────────────────────
+    Route::post('/ai-quiz/generate',                 [AIQuizController::class, 'generate']);
+    Route::post('/ai-quiz/evaluate',                 [AIQuizController::class, 'evaluate']);
+
+    // ── AI Flashcards ────────────────────────────────────────
+    Route::post('/flashcards/generate',              [AIFlashcardController::class, 'generate']);
 
     // ── Volunteer ────────────────────────────────────────────
     Route::post('/volunteer/join',                   [VolunteerController::class, 'join']);

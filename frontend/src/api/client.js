@@ -36,24 +36,32 @@ export const authAPI = {
 
 // ── Student ─────────────────────────────────────────────
 export const studentAPI = {
-  dashboard:    ()     => api.get('/dashboard'),
-  learningPlan: ()     => api.get('/learning-plan'),
-  submitQuiz:   (data) => api.post('/quiz/submit', data),
-  progress:     ()     => api.get('/progress'),
+  dashboard:     ()    => api.get('/dashboard'),
+  learningPlan:  ()    => api.get('/learning-plan'),
+  progress:      ()    => api.get('/progress'),
+  submitQuiz:    (data)=> api.post('/quiz/submit', data),
   downloadLesson:(id)  => api.get(`/lessons/${id}/download`),
+  viewLesson:    (id)  => api.post(`/lessons/${id}/view`),
 }
 
 // ── Teacher ──────────────────────────────────────────────
 export const teacherAPI = {
   dashboard:    ()     => api.get('/teacher/dashboard'),
   analytics:    ()     => api.get('/teacher/analytics'),
-  uploadLesson: (data) => api.post('/teacher/upload-lesson', data),
+  uploadLesson: (data) => {
+    const isFormData = data instanceof FormData
+    return api.post('/teacher/upload-lesson', data, {
+      headers: isFormData ? { 'Content-Type': 'multipart/form-data' } : {},
+      timeout: 120000, // extra time for PDF processing (Gemini extraction can take a while)
+    })
+  },
   sendSMS:      (data) => api.post('/teacher/send-sms', data),
 }
 
 // ── AI ──────────────────────────────────────────────────
 export const aiAPI = {
-  chat:         (data)     => api.post('/ask-ai', data),
+  getHistory:   (params)   => api.get('/ask-ai/history', { params }),
+  chat:         (data)     => api.post('/ask-ai', data, { timeout: 60000 }),
   generatePlan: (data)     => api.post('/generate-plan', data),
   translate:    (data)     => api.post('/translate', data),
   speechToText: (formData) => api.post('/speech-to-text', formData, {
@@ -62,6 +70,24 @@ export const aiAPI = {
   ocr: (formData) => api.post('/ocr', formData, {
     headers: { 'Content-Type': 'multipart/form-data' }, timeout: 30000,
   }),
+  // Fetch unique subjects from the vector DB (direct call to AI service)
+  subjects: () => {
+    const aiUrl = import.meta.env.VITE_AI_URL || 'http://localhost:4000'
+    return fetch(`${aiUrl}/ai/subjects`).then(r => r.json())
+  },
+  // Fetch vector content for a lesson directly from AI service
+  getVectorContent: (lessonId) => {
+    const aiUrl = import.meta.env.VITE_AI_URL || 'http://localhost:4000'
+    return fetch(`${aiUrl}/ai/${lessonId}`).then(r => {
+      if (!r.ok) throw new Error("Not Found")
+      return r.json()
+    })
+  },
+}
+
+// ── Flashcards ──────────────────────────────────────────
+export const flashcardsAPI = {
+  generate: (data) => api.post('/flashcards/generate', data),
 }
 
 // ── Lessons ──────────────────────────────────────────────

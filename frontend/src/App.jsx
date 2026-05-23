@@ -10,6 +10,7 @@ import LearningPlan from './pages/LearningPlan'
 import ContentLibrary from './pages/ContentLibrary'
 import QuizPage from './pages/QuizPage'
 import Analytics from './pages/Analytics'
+import Flashcards from './pages/Flashcards'
 import VolunteerHub from './pages/VolunteerHub'
 import Settings from './pages/Settings'
 import useStore from './store/useStore'
@@ -68,7 +69,8 @@ export default function App() {
           <Route path="/plan"       element={<ProtectedRoute><LearningPlan /></ProtectedRoute>} />
           <Route path="/library"    element={<ProtectedRoute><ContentLibrary /></ProtectedRoute>} />
           <Route path="/quiz"       element={<ProtectedRoute><QuizPage /></ProtectedRoute>} />
-          <Route path="/volunteers" element={<ProtectedRoute><VolunteerHub /></ProtectedRoute>} />
+          <Route path="/flashcards" element={<ProtectedRoute><Flashcards /></ProtectedRoute>} />
+          {/* <Route path="/volunteers" element={<ProtectedRoute><VolunteerHub /></ProtectedRoute>} /> */}
           <Route path="/settings"   element={<ProtectedRoute><Settings /></ProtectedRoute>} />
 
           {/* Teacher Protected */}

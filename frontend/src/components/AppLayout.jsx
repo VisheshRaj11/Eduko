@@ -3,6 +3,7 @@ import Navbar from './Navbar'
 import OfflineIndicator from './OfflineIndicator'
 import useStore from '../store/useStore'
 import { useEffect } from 'react'
+import { Toaster } from 'react-hot-toast'
 
 export default function AppLayout({ children, title }) {
   const { sidebarOpen } = useStore()
@@ -22,6 +23,7 @@ export default function AppLayout({ children, title }) {
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: '#FAFAF5' }}>
+      <Toaster position="top-center" />
       <Sidebar />
 
       {/* Main area shifts right of sidebar */}
@@ -35,7 +37,7 @@ export default function AppLayout({ children, title }) {
       }}
         className="responsive-main">
         <OfflineIndicator />
-        <Navbar title={title} />
+        {/* <Navbar title={title} /> */}
         <main style={{ flex: 1, overflow: 'auto' }}>
           {children}
         </main>

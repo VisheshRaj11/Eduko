@@ -7,6 +7,7 @@ use App\Jobs\TranslateContentJob;
 use App\Models\Lesson;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Http;
 
 class LessonController extends Controller
 {
@@ -16,6 +17,19 @@ class LessonController extends Controller
     public function index(Request $r): JsonResponse
     {
         $query = Lesson::where('is_deleted', '!=', true);
+
+        // Filter for students based on their profile
+        if ($user = $r->user('sanctum')) {
+            if ($user->role === 'student') {
+                $student = \App\Models\Student::where('user_id', (string)$user->_id)->first();
+                if ($student) {
+                    $query->where('grade_level', (int) $student->grade_level);
+                    if (!empty($student->subjects)) {
+                        $query->whereIn('subject', $student->subjects);
+                    }
+                }
+            }
+        }
 
         // Filters
         if ($subject = $r->query('subject')) {
@@ -51,6 +65,7 @@ class LessonController extends Controller
             'grade_level' => $l->grade_level,
             'language'    => $l->language,
             'difficulty'  => $l->difficulty,
+            'content'     => $l->content,
             'created_by'  => (string) $l->created_by,
             'created_at'  => $l->created_at?->toISOString(),
         ]);
@@ -204,13 +219,21 @@ class LessonController extends Controller
         }
 
         $user = $r->user();
-        if ((string) $lesson->created_by !== (string) $user->_id && $user->role !== 'admin') {
+        if ((string) $lesson->created_by !== (string) $user->_id && $user->role !== 'admin' && $user->role !== 'teacher') {
             return response()->json(['message' => 'Unauthorized.'], 403);
         }
 
         $lesson->is_deleted  = true;
         $lesson->deleted_at  = now();
         $lesson->save();
+
+        // Remove from AI Service (ChromaDB)
+        try {
+            $aiUrl = rtrim(config('services.ai.url', env('AI_SERVICE_URL', 'http://localhost:4000')), '/');
+            Http::timeout(10)->delete("{$aiUrl}/ai/{$id}");
+        } catch (\Exception $e) {
+            \Log::error("Failed to delete lesson {$id} from AI service: " . $e->getMessage());
+        }
 
         return response()->json(['message' => 'Lesson deleted successfully.']);
     }
@@ -221,6 +244,19 @@ class LessonController extends Controller
     public function offline(Request $r): JsonResponse
     {
         $query = Lesson::where('is_deleted', '!=', true);
+
+        // Filter for students based on their profile
+        if ($user = $r->user('sanctum')) {
+            if ($user->role === 'student') {
+                $student = \App\Models\Student::where('user_id', (string)$user->_id)->first();
+                if ($student) {
+                    $query->where('grade_level', (int) $student->grade_level);
+                    if (!empty($student->subjects)) {
+                        $query->whereIn('subject', $student->subjects);
+                    }
+                }
+            }
+        }
 
         // Allow filtering by grade for smaller payload
         if ($grade = $r->query('grade_level')) {

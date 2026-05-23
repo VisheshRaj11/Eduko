@@ -9,10 +9,7 @@ class Lesson extends Model
     protected $connection = 'mongodb';
     protected $collection = 'lessons';
 
-    protected $fillable = [
-        'title', 'subject', 'language', 'difficulty',
-        'content_blocks', 'resources', 'created_by',
-    ];
+    protected $guarded = [];
 
     protected $casts = ['content_blocks' => 'array', 'resources' => 'array'];
 

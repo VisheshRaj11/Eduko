@@ -2,8 +2,19 @@ import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useTranslation } from 'react-i18next'
 import AppLayout from '../components/AppLayout'
-import { studentAPI, quizAPI } from '../api/client'
-import { FiCheck, FiX, FiAward, FiArrowRight } from 'react-icons/fi'
+import api, { studentAPI, quizAPI } from '../api/client'
+import {
+  FiCheck,
+  FiX,
+  FiAward,
+  FiArrowRight,
+  FiBookOpen,
+  FiSettings,
+  FiCheckCircle,
+  FiLoader,
+  FiActivity,
+  FiRefreshCcw,
+} from 'react-icons/fi'
 
 const DEMO_QUIZ = {
   _id: 'q1',
@@ -20,6 +31,9 @@ const DEMO_QUIZ = {
 
 export default function QuizPage() {
   const { t } = useTranslation()
+  const [activeTab, setActiveTab] = useState('assigned') // 'assigned' or 'ai'
+
+  // --- Assigned Quiz State ---
   const [quiz, setQuiz] = useState(null)
   const [current, setCurrent] = useState(0)
   const [selected, setSelected] = useState(null)
@@ -28,10 +42,30 @@ export default function QuizPage() {
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
 
+  // --- AI Quiz State ---
+  const [aiStep, setAiStep] = useState('setup')
+  const [formData, setFormData] = useState({
+    subject: 'Science',
+    count: 3,
+    type: 'mcq',
+    difficulty: 'medium',
+    prompt: '',
+  })
+  const [aiQuestions, setAiQuestions] = useState([])
+  const [aiAnswers, setAiAnswers] = useState({})
+  const [evaluation, setEvaluation] = useState(null)
+  const [aiError, setAiError] = useState('')
+  const subjects = ['Mathematics', 'Science', 'English', 'Social Studies', 'Hindi', 'Punjabi']
+
   useEffect(() => {
-    quizAPI.getByLesson('1').then(r => setQuiz(r.data)).catch(() => setQuiz(DEMO_QUIZ)).finally(() => setLoading(false))
+    quizAPI
+      .getByLesson('1')
+      .then((r) => setQuiz(r.data))
+      .catch(() => setQuiz(DEMO_QUIZ))
+      .finally(() => setLoading(false))
   }, [])
 
+  // --- Assigned Quiz Handlers ---
   const handleSelect = (idx) => {
     if (selected !== null) return
     setSelected(idx)
@@ -41,7 +75,7 @@ export default function QuizPage() {
 
     setTimeout(() => {
       if (current + 1 < quiz.questions.length) {
-        setCurrent(c => c + 1)
+        setCurrent((c) => c + 1)
         setSelected(null)
       } else {
         submitQuiz(newAnswers)
@@ -51,87 +85,416 @@ export default function QuizPage() {
 
   const submitQuiz = async (finalAnswers) => {
     setSubmitting(true)
-    const score = Math.round((finalAnswers.filter(a => a.correct).length / quiz.questions.length) * 100)
+    const score = Math.round(
+      (finalAnswers.filter((a) => a.correct).length / quiz.questions.length) * 100
+    )
     try {
       await studentAPI.submitQuiz({ quiz_id: quiz._id, score, answers: finalAnswers })
-    } catch { /* offline — save to sync queue */ }
+    } catch {
+      /* offline — save to sync queue */
+    }
     setDone(true)
     setSubmitting(false)
   }
 
-  const score = answers.filter(a => a.correct).length
+  const score = answers.filter((a) => a.correct).length
   const total = quiz?.questions?.length || 0
 
-  if (loading) return <AppLayout title={t('quizzes')}><div className="main-content"><div className="animate-pulse space-y-4">{[...Array(3)].map((_,i)=><div key={i} className="skeleton h-16 rounded-xl"/>)}</div></div></AppLayout>
+  // --- AI Quiz Handlers ---
+  const handleGenerateAI = async (e) => {
+    e.preventDefault()
+    setAiStep('loading')
+    setAiError('')
+    try {
+      const res = await api.post('/ai-quiz/generate', formData)
+      if (res.data && res.data.questions) {
+        setAiQuestions(res.data.questions)
+        setAiStep('playing')
+        setAiAnswers({})
+      } else {
+        throw new Error('Invalid quiz data received')
+      }
+    } catch (err) {
+      setAiError('Failed to generate quiz. Please try again.')
+      setAiStep('setup')
+    }
+  }
 
-  if (done) return (
-    <AppLayout title={t('quizzes')}>
-      <div className="main-content flex items-center justify-center" style={{ minHeight: 400 }}>
-        <motion.div initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
-          className="surface-card p-10 text-center max-w-md w-full">
-          <div className={`w-24 h-24 rounded-full mx-auto mb-6 flex items-center justify-center text-4xl
-            ${score >= total * 0.7 ? 'bg-green-100' : 'bg-amber-100'}`}>
-            {score >= total * 0.7 ? '🏆' : '📝'}
-          </div>
-          <h2 className="text-2xl font-bold text-slate-800 mb-2">Quiz Complete!</h2>
-          <p className="text-slate-500 mb-6">You scored</p>
-          <div className="text-5xl font-bold text-gradient mb-2">{score}/{total}</div>
-          <div className="text-slate-500 mb-8">{Math.round((score / total) * 100)}% correct</div>
-          <div className="grid grid-cols-2 gap-4 mb-6 text-sm">
-            {answers.map((a, i) => (
-              <div key={i} className={`flex items-center gap-2 p-2 rounded-lg ${a.correct ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
-                {a.correct ? <FiCheck /> : <FiX />} Q{i + 1}: {a.correct ? 'Correct' : 'Wrong'}
-              </div>
+  const handleSubmitAIQuiz = async () => {
+    setAiStep('evaluating')
+    setAiError('')
+    const qa_pairs = aiQuestions.map((q, idx) => ({
+      question: q.question,
+      answer: aiAnswers[idx] || '',
+      correct_answer: q.answer || '',
+    }))
+    try {
+      const res = await api.post('/ai-quiz/evaluate', {
+        subject: formData.subject,
+        type: formData.type,
+        qa_pairs,
+      })
+      setEvaluation(res.data)
+      setAiStep('results')
+    } catch (err) {
+      setAiError('Failed to evaluate quiz. Please try again.')
+      setAiStep('playing')
+    }
+  }
+
+  const getRatingColor = (rating) => {
+    switch (rating?.toLowerCase()) {
+      case 'good':
+        return { background: '#F0FDF4', color: '#166534', border: '#10B981' }
+      case 'weak':
+        return { background: '#FEF2F2', color: '#991B1B', border: '#EF4444' }
+      default:
+        return { background: '#FFFBEB', color: '#92400E', border: '#F59E0B' }
+    }
+  }
+
+  // --- Render Assigned Quiz ---
+  const renderAssignedQuiz = () => {
+    if (loading) {
+      return (
+        <div style={{ maxWidth: 720, margin: '0 auto', padding: '40px 24px' }}>
+          <div
+            style={{
+              background: 'white',
+              borderRadius: 28,
+              padding: '32px',
+              border: '1px solid #E2E8F0',
+            }}
+          >
+            <div
+              style={{
+                height: 8,
+                background: '#E2E8F0',
+                borderRadius: 4,
+                marginBottom: 24,
+                width: '30%',
+              }}
+            />
+            <div
+              style={{
+                height: 60,
+                background: '#F1F5F9',
+                borderRadius: 16,
+                marginBottom: 20,
+              }}
+            />
+            {[...Array(4)].map((_, i) => (
+              <div
+                key={i}
+                style={{
+                  height: 56,
+                  background: '#F8FAFC',
+                  borderRadius: 16,
+                  marginBottom: 12,
+                }}
+              />
             ))}
           </div>
-          <button onClick={() => { setCurrent(0); setSelected(null); setAnswers([]); setDone(false) }} className="btn btn-primary btn-full gap-2">
-            <FiArrowRight /> Try Again
-          </button>
-        </motion.div>
-      </div>
-    </AppLayout>
-  )
-
-  const q = quiz?.questions?.[current]
-
-  return (
-    <AppLayout title={t('quizzes')}>
-      <div className="main-content">
-        {/* Progress */}
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-sm font-medium text-slate-600">{t('question')} {current + 1} {t('of')} {total}</span>
-          <span className="badge badge-green">{quiz?.title}</span>
         </div>
-        <div className="progress-bar mb-8">
-          <div className="progress-fill" style={{ width: `${((current) / total) * 100}%` }} />
-        </div>
+      )
+    }
 
-        <AnimatePresence mode="wait">
-          <motion.div key={current} initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -30 }}
-            className="surface-card p-8 max-w-2xl mx-auto">
-            <div className="flex items-center gap-3 mb-6">
-              <div className="w-10 h-10 bg-primary-100 rounded-xl flex items-center justify-center font-bold text-primary-700">{current + 1}</div>
-              <p className="text-xl font-bold text-slate-800">{q?.text}</p>
+    if (done) {
+      const percent = Math.round((score / total) * 100)
+      return (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            minHeight: 500,
+            padding: '40px 24px',
+          }}
+        >
+          <motion.div
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            style={{
+              maxWidth: 480,
+              width: '100%',
+              background: 'white',
+              borderRadius: 40,
+              padding: '40px 32px',
+              textAlign: 'center',
+              border: '1px solid #E2E8F0',
+              boxShadow: '0 20px 35px -12px rgba(0,0,0,0.05)',
+            }}
+          >
+            <div
+              style={{
+                width: 80,
+                height: 80,
+                borderRadius: 40,
+                background: score >= total * 0.7 ? '#10B981' : '#F59E0B',
+                margin: '0 auto 24px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <FiAward size={40} color="white" />
             </div>
+            <h2 style={{ fontSize: 28, fontWeight: 800, color: '#0F172A', margin: 0 }}>
+              {t('quizComplete')}
+            </h2>
+            <p style={{ color: '#64748B', marginBottom: 24, marginTop: 8 }}>{t('youScored')}</p>
+            <div style={{ fontSize: 48, fontWeight: 800, color: '#0F172A', marginBottom: 8 }}>
+              {score}/{total}
+            </div>
+            <div style={{ fontSize: 16, color: '#475569', marginBottom: 32 }}>{percent}% {t('correct')}</div>
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))',
+                gap: 12,
+                marginBottom: 32,
+              }}
+            >
+              {answers.map((a, i) => (
+                <div
+                  key={i}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 6,
+                    padding: '8px 12px',
+                    borderRadius: 16,
+                    background: a.correct ? '#F0FDF4' : '#FEF2F2',
+                    color: a.correct ? '#166534' : '#991B1B',
+                    fontSize: 13,
+                    fontWeight: 500,
+                  }}
+                >
+                  {a.correct ? <FiCheck size={14} /> : <FiX size={14} />} Q{i + 1}
+                </div>
+              ))}
+            </div>
+            <button
+              onClick={() => {
+                setCurrent(0)
+                setSelected(null)
+                setAnswers([])
+                setDone(false)
+              }}
+              style={{
+                width: '100%',
+                background: '#3B82F6',
+                color: 'white',
+                padding: '14px 24px',
+                borderRadius: 40,
+                fontWeight: 600,
+                fontSize: 15,
+                border: 'none',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 8,
+                transition: 'background 0.2s',
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = '#2563EB')}
+              onMouseLeave={(e) => (e.currentTarget.style.background = '#3B82F6')}
+            >
+              <FiArrowRight size={18} /> {t('tryAgain')}
+            </button>
+          </motion.div>
+        </div>
+      )
+    }
 
-            <div className="grid gap-3">
+    const q = quiz?.questions?.[current]
+    return (
+      <div style={{ maxWidth: 900, margin: '0 auto', padding: '40px 24px' }}>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginBottom: 12,
+            flexWrap: 'wrap',
+            gap: 12,
+          }}
+        >
+          <span style={{ fontSize: 14, color: '#64748B', fontWeight: 500 }}>
+            Question {current + 1} of {total}
+          </span>
+          <div
+            style={{
+              background: '#EFF6FF',
+              color: '#2563EB',
+              padding: '4px 12px',
+              borderRadius: 40,
+              fontSize: 13,
+              fontWeight: 600,
+            }}
+          >
+            {quiz?.title}
+          </div>
+        </div>
+        <div
+          style={{
+            width: '100%',
+            height: 6,
+            background: '#E2E8F0',
+            borderRadius: 3,
+            marginBottom: 32,
+            overflow: 'hidden',
+          }}
+        >
+          <div
+            style={{
+              width: `${(current / total) * 100}%`,
+              height: '100%',
+              background: '#3B82F6',
+              borderRadius: 3,
+              transition: 'width 0.3s ease',
+            }}
+          />
+        </div>
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={current}
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+            transition={{ duration: 0.25 }}
+            style={{
+              background: 'white',
+              borderRadius: 32,
+              padding: '32px 28px',
+              border: '1px solid #E2E8F0',
+              boxShadow: '0 10px 25px -5px rgba(0,0,0,0.02)',
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 16,
+                marginBottom: 28,
+              }}
+            >
+              <div
+                style={{
+                  width: 44,
+                  height: 44,
+                  borderRadius: 22,
+                  background: '#EFF6FF',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontWeight: 700,
+                  fontSize: 18,
+                  color: '#2563EB',
+                }}
+              >
+                {current + 1}
+              </div>
+              <p
+                style={{
+                  fontSize: 20,
+                  fontWeight: 700,
+                  color: '#0F172A',
+                  margin: 0,
+                  lineHeight: 1.4,
+                }}
+              >
+                {q?.text}
+              </p>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               {q?.options?.map((opt, i) => {
-                let cls = 'p-4 rounded-xl border-2 text-left text-sm font-medium cursor-pointer transition-all '
-                if (selected === null) cls += 'border-slate-200 hover:border-primary-400 hover:bg-primary-50 text-slate-700'
-                else if (i === q.correct) cls += 'border-green-500 bg-green-50 text-green-800'
-                else if (i === selected && selected !== q.correct) cls += 'border-red-400 bg-red-50 text-red-800'
-                else cls += 'border-slate-200 text-slate-400'
+                const isCorrect = i === q.correct
+                const isSelected = i === selected
+                const isWrongSelected = isSelected && !isCorrect
+                let background = 'white'
+                let borderColor = '#E2E8F0'
+                let textColor = '#334155'
+
+                if (selected !== null && isCorrect) {
+                  background = '#F0FDF4'
+                  borderColor = '#10B981'
+                  textColor = '#166534'
+                } else if (selected !== null && isWrongSelected) {
+                  background = '#FEF2F2'
+                  borderColor = '#EF4444'
+                  textColor = '#991B1B'
+                } else if (selected !== null && !isCorrect && !isSelected) {
+                  background = '#F8FAFC'
+                  borderColor = '#E2E8F0'
+                  textColor = '#94A3B8'
+                }
 
                 return (
-                  <button key={i} onClick={() => handleSelect(i)} disabled={selected !== null} className={cls}>
-                    <span className="flex items-center gap-3">
-                      <span className="w-7 h-7 rounded-full border-2 border-current flex items-center justify-center text-xs font-bold flex-shrink-0">
-                        {String.fromCharCode(65 + i)}
-                      </span>
-                      {opt}
-                      {selected !== null && i === q.correct && <FiCheck className="ml-auto text-green-600" />}
-                      {selected !== null && i === selected && selected !== q.correct && <FiX className="ml-auto text-red-500" />}
+                  <button
+                    key={i}
+                    onClick={() => handleSelect(i)}
+                    disabled={selected !== null}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 16,
+                      padding: '14px 20px',
+                      borderRadius: 24,
+                      border: `2px solid ${borderColor}`,
+                      background,
+                      cursor: selected !== null ? 'default' : 'pointer',
+                      transition: 'all 0.2s',
+                      textAlign: 'left',
+                      width: '100%',
+                    }}
+                    onMouseEnter={(e) => {
+                      if (selected === null && !isCorrect && !isSelected) {
+                        e.currentTarget.style.borderColor = '#3B82F6'
+                        e.currentTarget.style.background = '#EFF6FF'
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (selected === null && !isCorrect && !isSelected) {
+                        e.currentTarget.style.borderColor = '#E2E8F0'
+                        e.currentTarget.style.background = 'white'
+                      }
+                    }}
+                  >
+                    <span
+                      style={{
+                        width: 32,
+                        height: 32,
+                        borderRadius: 16,
+                        border: `2px solid ${
+                          selected !== null && isCorrect
+                            ? '#10B981'
+                            : selected !== null && isWrongSelected
+                            ? '#EF4444'
+                            : '#CBD5E1'
+                        }`,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: 14,
+                        fontWeight: 700,
+                        color:
+                          selected !== null && isCorrect
+                            ? '#10B981'
+                            : selected !== null && isWrongSelected
+                            ? '#EF4444'
+                            : '#64748B',
+                        flexShrink: 0,
+                      }}
+                    >
+                      {String.fromCharCode(65 + i)}
                     </span>
+                    <span style={{ flex: 1, fontSize: 15, fontWeight: 500, color: textColor }}>
+                      {opt}
+                    </span>
+                    {selected !== null && isCorrect && <FiCheck size={20} color="#10B981" />}
+                    {selected !== null && isWrongSelected && <FiX size={20} color="#EF4444" />}
                   </button>
                 )
               })}
@@ -139,6 +502,579 @@ export default function QuizPage() {
           </motion.div>
         </AnimatePresence>
       </div>
+    )
+  }
+
+  // --- Render AI Quiz ---
+  const renderAIQuiz = () => {
+    return (
+      <div style={{ maxWidth: 900, margin: '0 auto', padding: '40px 24px' }}>
+        {aiError && (
+          <div
+            style={{
+              background: '#FEF2F2',
+              border: '1px solid #FECACA',
+              borderRadius: 20,
+              padding: '14px 18px',
+              marginBottom: 24,
+              color: '#B91C1C',
+              fontSize: 14,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 12,
+            }}
+          >
+            <span>⚠️</span>
+            <span>{aiError}</span>
+          </div>
+        )}
+
+        {aiStep === 'setup' && (
+          <div
+            style={{
+              background: 'white',
+              borderRadius: 32,
+              padding: '32px 28px',
+              border: '1px solid #E2E8F0',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.02)',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 28 }}>
+              <div
+                style={{
+                  width: 48,
+                  height: 48,
+                  borderRadius: 24,
+                  background: '#EFF6FF',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <FiActivity size={24} color="#2563EB" />
+              </div>
+              <div>
+                <h1 style={{ fontSize: 22, fontWeight: 700, color: '#0F172A', marginBottom: 4 }}>
+                  {t('quizCustom')}
+                </h1>
+                <p style={{ fontSize: 14, color: '#64748B' }}>
+                  {t('generateCustomQuiz')}
+                </p>
+              </div>
+            </div>
+
+            <form onSubmit={handleGenerateAI}>
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+                  gap: 20,
+                  marginBottom: 24,
+                }}
+              >
+                <div>
+                  <label
+                    style={{
+                      display: 'block',
+                      fontSize: 13,
+                      fontWeight: 600,
+                      color: '#1E293B',
+                      marginBottom: 8,
+                    }}
+                  >
+                    Subject
+                  </label>
+                  <select
+                    value={formData.subject}
+                    onChange={(e) => setFormData({ ...formData, subject: e.target.value })}
+                    style={{
+                      width: '100%',
+                      padding: '10px 14px',
+                      borderRadius: 16,
+                      border: '1px solid #E2E8F0',
+                      background: '#F8FAFC',
+                      fontSize: 14,
+                      outline: 'none',
+                    }}
+                  >
+                    {subjects.map((s) => (
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label
+                    style={{
+                      display: 'block',
+                      fontSize: 13,
+                      fontWeight: 600,
+                      color: '#1E293B',
+                      marginBottom: 8,
+                    }}
+                  >
+                    {t('numCards')}
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="10"
+                    value={formData.count}
+                    onChange={(e) =>
+                      setFormData({ ...formData, count: parseInt(e.target.value) })
+                    }
+                    style={{
+                      width: '100%',
+                      padding: '10px 14px',
+                      borderRadius: 16,
+                      border: '1px solid #E2E8F0',
+                      background: '#F8FAFC',
+                      fontSize: 14,
+                      outline: 'none',
+                    }}
+                  />
+                </div>
+                <div>
+                  <label
+                    style={{
+                      display: 'block',
+                      fontSize: 13,
+                      fontWeight: 600,
+                      color: '#1E293B',
+                      marginBottom: 8,
+                    }}
+                  >
+                    {t('questionType')}
+                  </label>
+                  <select
+                    value={formData.type}
+                    onChange={(e) => setFormData({ ...formData, type: e.target.value })}
+                    style={{
+                      width: '100%',
+                      padding: '10px 14px',
+                      borderRadius: 16,
+                      border: '1px solid #E2E8F0',
+                      background: '#F8FAFC',
+                      fontSize: 14,
+                      outline: 'none',
+                    }}
+                  >
+                    <option value="mcq">{t('mcq')}</option>
+                    <option value="subjective">{t('subjective')}</option>
+                  </select>
+                </div>
+                <div>
+                  <label
+                    style={{
+                      display: 'block',
+                      fontSize: 13,
+                      fontWeight: 600,
+                      color: '#1E293B',
+                      marginBottom: 8,
+                    }}
+                  >
+                    {t('difficulty')}
+                  </label>
+                  <select
+                    value={formData.difficulty}
+                    onChange={(e) => setFormData({ ...formData, difficulty: e.target.value })}
+                    style={{
+                      width: '100%',
+                      padding: '10px 14px',
+                      borderRadius: 16,
+                      border: '1px solid #E2E8F0',
+                      background: '#F8FAFC',
+                      fontSize: 14,
+                      outline: 'none',
+                    }}
+                  >
+                    <option value="easy">{t('easy')}</option>
+                    <option value="medium">{t('medium')}</option>
+                    <option value="hard">{t('hard')}</option>
+                  </select>
+                </div>
+              </div>
+
+              <div style={{ marginBottom: 28 }}>
+                <label
+                  style={{
+                    display: 'block',
+                    fontSize: 13,
+                    fontWeight: 600,
+                    color: '#1E293B',
+                    marginBottom: 8,
+                  }}
+                >
+                  {t('topicOptional')}
+                </label>
+                <textarea
+                  value={formData.prompt}
+                  onChange={(e) => setFormData({ ...formData, prompt: e.target.value })}
+                  placeholder={t('topicOptionalPlaceholder')}
+                  rows={3}
+                  style={{
+                    width: '100%',
+                    padding: '12px 14px',
+                    borderRadius: 20,
+                    border: '1px solid #E2E8F0',
+                    background: '#F8FAFC',
+                    fontSize: 14,
+                    resize: 'vertical',
+                    outline: 'none',
+                  }}
+                />
+              </div>
+
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'flex-end',
+                  borderTop: '1px solid #E2E8F0',
+                  paddingTop: 24,
+                }}
+              >
+                <button
+                  type="submit"
+                  style={{
+                    background: '#3B82F6',
+                    color: 'white',
+                    padding: '12px 28px',
+                    borderRadius: 40,
+                    fontWeight: 600,
+                    fontSize: 14,
+                    border: 'none',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    transition: 'background 0.2s',
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = '#2563EB')}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = '#3B82F6')}
+                >
+                  <FiSettings size={16} /> {t('generateQuiz')}
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
+
+        {(aiStep === 'loading' || aiStep === 'evaluating') && (
+          <div
+            style={{
+              background: 'white',
+              borderRadius: 32,
+              padding: '60px 32px',
+              textAlign: 'center',
+              border: '1px solid #E2E8F0',
+            }}
+          >
+            <div
+              style={{
+                width: 64,
+                height: 64,
+                margin: '0 auto 24px',
+                border: '3px solid #E2E8F0',
+                borderTopColor: '#3B82F6',
+                borderRadius: '50%',
+                animation: 'spin 1s linear infinite',
+              }}
+            />
+            <h3 style={{ fontSize: 18, fontWeight: 700, color: '#0F172A', marginBottom: 8 }}>
+              {aiStep === 'loading' ? t('craftingQuiz') : t('evaluatingQuiz')}
+            </h3>
+            <p style={{ fontSize: 14, color: '#64748B' }}>
+              {t('aiAnalyzing')}
+            </p>
+          </div>
+        )}
+
+        {aiStep === 'playing' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+            {aiQuestions.map((q, idx) => (
+              <div
+                key={idx}
+                style={{
+                  background: 'white',
+                  borderRadius: 28,
+                  padding: '24px 28px',
+                  border: '1px solid #E2E8F0',
+                }}
+              >
+                <h4
+                  style={{
+                    fontSize: 18,
+                    fontWeight: 700,
+                    color: '#0F172A',
+                    marginBottom: 20,
+                  }}
+                >
+                  <span style={{ color: '#3B82F6', marginRight: 10 }}>Q{idx + 1}.</span>
+                  {q.question}
+                </h4>
+                {formData.type === 'mcq' ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    {q.options?.map((opt, oidx) => (
+                      <label
+                        key={oidx}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 12,
+                          padding: '12px 16px',
+                          borderRadius: 20,
+                          border: `1px solid ${
+                            aiAnswers[idx] === opt ? '#3B82F6' : '#E2E8F0'
+                          }`,
+                          background: aiAnswers[idx] === opt ? '#EFF6FF' : 'white',
+                          cursor: 'pointer',
+                          transition: 'all 0.2s',
+                        }}
+                      >
+                        <input
+                          type="radio"
+                          name={`ai-q-${idx}`}
+                          value={opt}
+                          checked={aiAnswers[idx] === opt}
+                          onChange={(e) =>
+                            setAiAnswers({ ...aiAnswers, [idx]: e.target.value })
+                          }
+                          style={{ width: 16, height: 16 }}
+                        />
+                        <span style={{ fontSize: 14, color: '#1E293B' }}>{opt}</span>
+                      </label>
+                    ))}
+                  </div>
+                ) : (
+                  <textarea
+                    rows={4}
+                    value={aiAnswers[idx] || ''}
+                    onChange={(e) => setAiAnswers({ ...aiAnswers, [idx]: e.target.value })}
+                    placeholder="Type your answer here..."
+                    style={{
+                      width: '100%',
+                      padding: '14px 16px',
+                      borderRadius: 20,
+                      border: '1px solid #E2E8F0',
+                      background: '#F8FAFC',
+                      fontSize: 14,
+                      resize: 'vertical',
+                      outline: 'none',
+                    }}
+                  />
+                )}
+              </div>
+            ))}
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'flex-end',
+                position: 'sticky',
+                bottom: 20,
+                zIndex: 10,
+              }}
+            >
+              <button
+                onClick={handleSubmitAIQuiz}
+                disabled={Object.keys(aiAnswers).length < aiQuestions.length}
+                style={{
+                  background: '#3B82F6',
+                  color: 'white',
+                  padding: '12px 32px',
+                  borderRadius: 40,
+                  fontWeight: 600,
+                  fontSize: 15,
+                  border: 'none',
+                  cursor: Object.keys(aiAnswers).length < aiQuestions.length ? 'not-allowed' : 'pointer',
+                  opacity: Object.keys(aiAnswers).length < aiQuestions.length ? 0.5 : 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  transition: 'background 0.2s',
+                }}
+                onMouseEnter={(e) => {
+                  if (Object.keys(aiAnswers).length >= aiQuestions.length) {
+                    e.currentTarget.style.background = '#2563EB'
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (Object.keys(aiAnswers).length >= aiQuestions.length) {
+                    e.currentTarget.style.background = '#3B82F6'
+                  }
+                }}
+              >
+                <FiCheckCircle size={18} /> {t('submitAnswers')}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {aiStep === 'results' && evaluation && (
+          <div
+            style={{
+              background: 'white',
+              borderRadius: 32,
+              padding: '40px 32px',
+              textAlign: 'center',
+              border: '1px solid #E2E8F0',
+              position: 'relative',
+              overflow: 'hidden',
+            }}
+          >
+            <h2 style={{ fontSize: 26, fontWeight: 800, color: '#0F172A', marginBottom: 16 }}>
+              Quiz Complete!
+            </h2>
+            <div
+              style={{
+                fontSize: 56,
+                fontWeight: 800,
+                color: '#2563EB',
+                marginBottom: 24,
+              }}
+            >
+              {evaluation.score}%
+            </div>
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'center',
+                marginBottom: 24,
+              }}
+            >
+              <div
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  padding: '6px 18px',
+                  borderRadius: 40,
+                  background: getRatingColor(evaluation.rating).background,
+                  color: getRatingColor(evaluation.rating).color,
+                  border: `1px solid ${getRatingColor(evaluation.rating).border}`,
+                  fontSize: 14,
+                  fontWeight: 600,
+                }}
+              >
+                <FiActivity size={16} /> Performance: {evaluation.rating}
+              </div>
+            </div>
+            <p
+              style={{
+                fontSize: 16,
+                color: '#475569',
+                maxWidth: 500,
+                margin: '0 auto 32px',
+                lineHeight: 1.6,
+              }}
+            >
+              {evaluation.feedback}
+            </p>
+            <button
+              onClick={() => setAiStep('setup')}
+              style={{
+                background: 'white',
+                color: '#3B82F6',
+                padding: '12px 28px',
+                borderRadius: 40,
+                fontWeight: 600,
+                fontSize: 14,
+                border: '1px solid #3B82F6',
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 8,
+                transition: 'all 0.2s',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = '#EFF6FF'
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'white'
+              }}
+            >
+              <FiRefreshCcw size={18} /> {t('newSet')}
+            </button>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  return (
+    <AppLayout title={t('quizzes')}>
+      <div
+        style={{
+          borderBottom: '1px solid #E2E8F0',
+          background: 'white',
+          position: 'sticky',
+          top: 0,
+          zIndex: 20,
+        }}
+      >
+        <div
+          style={{
+            maxWidth: 900,
+            margin: '0 auto',
+            padding: '0 24px',
+            display: 'flex',
+            gap: 32,
+          }}
+        >
+          <button
+            onClick={() => setActiveTab('assigned')}
+            style={{
+              padding: '16px 4px',
+              fontSize: 14,
+              fontWeight: 600,
+              borderBottom: `2px solid ${activeTab === 'assigned' ? '#3B82F6' : 'transparent'}`,
+              color: activeTab === 'assigned' ? '#2563EB' : '#64748B',
+              background: 'none',
+              borderTop: 'none',
+              borderLeft: 'none',
+              borderRight: 'none',
+              cursor: 'pointer',
+              transition: 'color 0.2s',
+            }}
+          >
+            Assigned Quizzes
+          </button>
+          <button
+            onClick={() => setActiveTab('ai')}
+            style={{
+              padding: '16px 4px',
+              fontSize: 14,
+              fontWeight: 600,
+              borderBottom: `2px solid ${activeTab === 'ai' ? '#3B82F6' : 'transparent'}`,
+              color: activeTab === 'ai' ? '#2563EB' : '#64748B',
+              background: 'none',
+              borderTop: 'none',
+              borderLeft: 'none',
+              borderRight: 'none',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              transition: 'color 0.2s',
+            }}
+          >
+            <FiActivity size={16} /> Generate AI Quiz
+          </button>
+        </div>
+      </div>
+
+      <div style={{ background: '#F8FAFC', minHeight: 'calc(100vh - 120px)' }}>
+        {activeTab === 'assigned' ? renderAssignedQuiz() : renderAIQuiz()}
+      </div>
+
+      <style>
+        {`
+          @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+          }
+        `}
+      </style>
     </AppLayout>
   )
 }

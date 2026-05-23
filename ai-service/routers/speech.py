@@ -49,6 +49,7 @@ class _Settings(BaseSettings):
 
     class Config:
         env_file = ".env"
+        extra = "ignore"
 
 
 def _get_api_key() -> str:
@@ -125,7 +126,7 @@ def _transcribe_bytes(audio_bytes: bytes, mime_type: str) -> str:
 
         uploaded_file = genai.upload_file(path=tmp_path, mime_type=canonical_mime)
 
-        model = genai.GenerativeModel("gemini-2.5-flash-preview-04-17")
+        model = genai.GenerativeModel("gemini-flash-lite-latest")
         response = model.generate_content([TRANSCRIPTION_PROMPT, uploaded_file])
         return response.text.strip()
 

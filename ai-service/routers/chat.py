@@ -1,7 +1,6 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from services.rag_service import answer_question, ingest_lesson
-from services import rag_service
 from typing import Optional
 
 router = APIRouter()
@@ -9,14 +8,17 @@ router = APIRouter()
 
 class ChatRequest(BaseModel):
     message: str
-    language: str = "hi"
+    language: str = "en"
     user_id: str = "anonymous"
+    subject: Optional[str] = None   # e.g. "Mathematics", "Science" — filters vector DB
+    lesson_id: Optional[str] = None # specific lesson ID — filters exactly to one document
     history: list[dict] = []
 
 
 class ChatResponse(BaseModel):
     response: str
     language: str
+    subject: Optional[str] = None
 
 
 class IngestRequest(BaseModel):
@@ -24,12 +26,13 @@ class IngestRequest(BaseModel):
     title: str
     content: str
     subject: Optional[str] = None
-    language: Optional[str] = "hi"
+    language: Optional[str] = "en"
+    grade: Optional[int] = None
 
 
 @router.post("/chat", response_model=ChatResponse)
 async def chat(req: ChatRequest):
-    """AI Tutor chat endpoint with RAG pipeline."""
+    """AI Tutor chat endpoint with subject-filtered RAG pipeline."""
     if not req.message.strip():
         raise HTTPException(status_code=400, detail="Message cannot be empty")
 
@@ -37,10 +40,12 @@ async def chat(req: ChatRequest):
         message=req.message,
         language=req.language,
         user_id=req.user_id,
+        subject=req.subject,
+        lesson_id=req.lesson_id,
         history=req.history,
     )
 
-    return ChatResponse(response=response, language=req.language)
+    return ChatResponse(response=response, language=req.language, subject=req.subject)
 
 
 @router.post("/ingest")
@@ -50,6 +55,10 @@ async def ingest(req: IngestRequest):
         lesson_id=req.lesson_id,
         title=req.title,
         content=req.content,
-        metadata={"subject": req.subject or "", "language": req.language or "hi"},
+        metadata={
+            "subject":  req.subject  or "",
+            "language": req.language or "en",
+            "grade":    str(req.grade or ""),
+        },
     )
     return {"chunks_ingested": count, "lesson_id": req.lesson_id}

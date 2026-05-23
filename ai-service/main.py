@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from routers import chat, plan, translate, speech, ocr
+from routers import chat, plan, translate, speech, ocr, ingest, ai_quiz, flashcards
 import uvicorn
 
 app = FastAPI(
@@ -22,6 +22,9 @@ app.include_router(plan.router,      prefix="/ai", tags=["Learning Plan"])
 app.include_router(translate.router, prefix="/ai", tags=["Translation"])
 app.include_router(speech.router,    prefix="/ai", tags=["Speech"])
 app.include_router(ocr.router,       prefix="/ai", tags=["OCR"])
+app.include_router(ingest.router,    prefix="/ai", tags=["Ingest"])
+app.include_router(ai_quiz.router,   prefix="/ai", tags=["Quiz"])
+app.include_router(flashcards.router,prefix="/ai", tags=["Flashcards"])
 
 
 @app.get("/health")
