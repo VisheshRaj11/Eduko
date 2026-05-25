@@ -20,6 +20,7 @@ import {
   FiCalendar,
   FiBookOpen,
   FiCpu,
+  FiCamera,
 } from 'react-icons/fi'
 import { authAPI } from '../api/client'
 
@@ -36,22 +37,40 @@ export default function Settings() {
   const [form, setForm] = useState({
     name: user?.name || '',
     phone: user?.phone || '',
-    password: '',
+    grade_level: user?.grade_level || 8,
+    avatarFile: null,
+    avatarPreview: null,
   })
   const [tab, setTab] = useState('profile')
 
   const handleSave = async () => {
     try {
-      setSaved(true)
-      if (form.name !== user?.name || form.phone !== user?.phone) {
-        setUser({ ...user, name: form.name, phone: form.phone })
+      const formData = new FormData()
+      formData.append('name', form.name)
+      if (form.phone) formData.append('phone', form.phone)
+      if (user?.role === 'student' && form.grade_level) {
+        formData.append('grade_level', form.grade_level)
       }
+      if (form.avatarFile) {
+        formData.append('avatar', form.avatarFile)
+      }
+
+      const res = await authAPI.updateProfile(formData)
+      if (res.data && res.data.user) {
+        setUser({ ...res.data.user, profile: res.data.profile })
+      }
+      
+      setSaved(true)
       setTimeout(() => setSaved(false), 2500)
-    } catch {
+    } catch (err) {
+      console.error(err)
       setSaved(true)
       setTimeout(() => setSaved(false), 2500)
     }
   }
+
+  const backendUrl = import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:8000'
+  const displayAvatar = form.avatarPreview || (user?.avatar ? (user.avatar.startsWith('http') ? user.avatar : `${backendUrl}${user.avatar}`) : null)
 
   const handleLogout = async () => {
     try {
@@ -82,7 +101,7 @@ export default function Settings() {
         style={{
           maxWidth: 900,
           margin: '0 auto',
-          padding: '0 24px 60px',
+          padding: '24px 60px',
           position: 'relative',
           zIndex: 2,
         }}
@@ -106,23 +125,37 @@ export default function Settings() {
             flexWrap: 'wrap',
           }}
         >
-          <div
-            style={{
-              width: 64,
-              height: 64,
-              borderRadius: 24,
-              background: 'linear-gradient(135deg, #8B5CF6, #EC4899)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: 28,
-              fontWeight: 'bold',
-              color: 'white',
-              boxShadow: '0 10px 20px rgba(139,92,246,0.3)',
-            }}
-          >
-            {user?.name?.[0]?.toUpperCase() || 'U'}
-          </div>
+          {displayAvatar ? (
+            <img
+              src={displayAvatar}
+              alt="Avatar"
+              style={{
+                width: 64,
+                height: 64,
+                borderRadius: 24,
+                objectFit: 'cover',
+                boxShadow: '0 10px 20px rgba(0,0,0,0.1)',
+              }}
+            />
+          ) : (
+            <div
+              style={{
+                width: 64,
+                height: 64,
+                borderRadius: 24,
+                background: 'linear-gradient(135deg, #8B5CF6, #EC4899)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: 28,
+                fontWeight: 'bold',
+                color: 'white',
+                boxShadow: '0 10px 20px rgba(139,92,246,0.3)',
+              }}
+            >
+              {user?.name?.[0]?.toUpperCase() || 'U'}
+            </div>
+          )}
           <div>
             <div
               style={{
@@ -227,6 +260,54 @@ export default function Settings() {
               <FiUser size={22} color="#8B5CF6" /> {t('profileInfo')}
             </h3>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+              
+              {/* Avatar Upload */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
+                {displayAvatar ? (
+                  <img
+                    src={displayAvatar}
+                    alt="Preview"
+                    style={{ width: 80, height: 80, borderRadius: 24, objectFit: 'cover' }}
+                  />
+                ) : (
+                  <div style={{ width: 80, height: 80, borderRadius: 24, background: '#F3F4F6', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <FiUser size={32} color="#9CA3AF" />
+                  </div>
+                )}
+                <div>
+                  <label
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      padding: '10px 16px',
+                      background: '#F9FAFB',
+                      border: '1px solid #E5E7EB',
+                      borderRadius: 12,
+                      cursor: 'pointer',
+                      fontSize: 14,
+                      fontWeight: 600,
+                      color: '#4B5563',
+                      transition: 'all 0.2s',
+                    }}
+                  >
+                    <FiCamera size={16} />
+                    Change Picture
+                    <input
+                      type="file"
+                      accept="image/*"
+                      style={{ display: 'none' }}
+                      onChange={(e) => {
+                        const file = e.target.files[0]
+                        if (file) {
+                          setForm(f => ({ ...f, avatarFile: file, avatarPreview: URL.createObjectURL(file) }))
+                        }
+                      }}
+                    />
+                  </label>
+                </div>
+              </div>
+
               <div>
                 <label
                   style={{
@@ -292,6 +373,42 @@ export default function Settings() {
                   Used for SMS notifications
                 </div>
               </div>
+
+              {user?.role === 'student' && (
+                <div>
+                  <label
+                    style={{
+                      display: 'block',
+                      fontSize: 14,
+                      fontWeight: 600,
+                      color: '#374151',
+                      marginBottom: 8,
+                    }}
+                  >
+                    Class / Grade Level
+                  </label>
+                  <select
+                    value={form.grade_level}
+                    onChange={(e) => setForm(f => ({ ...f, grade_level: e.target.value }))}
+                    style={{
+                      width: '100%',
+                      padding: '14px 18px',
+                      borderRadius: 20,
+                      border: '1.5px solid #E5E7EB',
+                      fontSize: 15,
+                      outline: 'none',
+                      transition: 'all 0.2s',
+                      fontFamily: 'inherit',
+                      background: 'white',
+                    }}
+                  >
+                    {[...Array(12)].map((_, i) => (
+                      <option key={i+1} value={i+1}>Class {i+1}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               <div>
                 <label
                   style={{

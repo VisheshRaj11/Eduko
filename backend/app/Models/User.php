@@ -21,6 +21,7 @@ class User extends Authenticatable
         'phone',
         'language',
         'grade_level',
+        'avatar',
     ];
 
     protected $hidden = ['password', 'remember_token'];

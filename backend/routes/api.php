@@ -22,6 +22,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/logout',  [AuthController::class, 'logout']);
     Route::get('/user',     [AuthController::class, 'me']);
     Route::get('/me',       [AuthController::class, 'me']);
+    Route::post('/user/profile', [AuthController::class, 'updateProfile']);
 
     // ── Student ──────────────────────────────────────────────
     Route::get('/dashboard',                         [StudentController::class, 'dashboard']);
@@ -30,6 +31,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/progress',                          [StudentController::class, 'progress']);
     Route::get('/lessons/{id}/download',             [StudentController::class, 'downloadLesson']);
     Route::post('/lessons/{id}/view',                [StudentController::class, 'viewLesson']);
+    Route::get('/assigned-tasks',                    [StudentController::class, 'getAssignedTasks']);
+    Route::post('/assigned-tasks/{id}/complete',     [StudentController::class, 'completeTask']);
 
     // ── Lessons (shared) ─────────────────────────────────────
     Route::get('/lessons',                           [LessonController::class, 'index']);
@@ -45,7 +48,11 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/analytics',                     [TeacherController::class, 'analytics']);
         Route::post('/upload-lesson',                [TeacherController::class, 'uploadLesson']);
         Route::post('/send-sms',                     [TeacherController::class, 'sendSMS']);
+        Route::post('/generate-suggestions',         [TeacherController::class, 'generateAISuggestions']);
         Route::post('/reingest-all',                 [TeacherController::class, 'reingestAll']);
+        Route::get('/students',                      [TeacherController::class, 'getStudents']);
+        Route::get('/assigned-tasks',                [TeacherController::class, 'getAssignedTasks']);
+        Route::post('/assigned-tasks',               [TeacherController::class, 'assignTask']);
     });
 
     // Legacy analytics route

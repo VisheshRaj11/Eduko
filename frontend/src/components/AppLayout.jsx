@@ -5,7 +5,7 @@ import useStore from '../store/useStore'
 import { useEffect } from 'react'
 import { Toaster } from 'react-hot-toast'
 
-export default function AppLayout({ children, title }) {
+export default function AppLayout({ children, title, noRadial = false }) {
   const { sidebarOpen } = useStore()
 
   // Update online/offline status
@@ -22,7 +22,13 @@ export default function AppLayout({ children, title }) {
   }, [])
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', background: '#FAFAF5' }}>
+    <div style={{ 
+      display: 'flex', 
+      minHeight: '100vh', 
+      backgroundColor: '#FAFAF5',
+      backgroundImage: noRadial ? 'none' : 'radial-gradient(circle, rgba(0,0,0,0.08) 2px, transparent 2px)',
+      backgroundSize: noRadial ? 'auto' : '24px 24px'
+    }}>
       <Toaster position="top-center" />
       <Sidebar />
 

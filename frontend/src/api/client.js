@@ -32,6 +32,9 @@ export const authAPI = {
   login:    (data) => api.post('/login', data),
   logout:   ()     => api.post('/logout'),
   me:       ()     => api.get('/me'),
+  updateProfile: (data) => api.post('/user/profile', data, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  }),
 }
 
 // ── Student ─────────────────────────────────────────────
@@ -42,6 +45,8 @@ export const studentAPI = {
   submitQuiz:    (data)=> api.post('/quiz/submit', data),
   downloadLesson:(id)  => api.get(`/lessons/${id}/download`),
   viewLesson:    (id)  => api.post(`/lessons/${id}/view`),
+  getAssignedTasks: () => api.get('/assigned-tasks'),
+  completeAssignedTask: (id) => api.post(`/assigned-tasks/${id}/complete`),
 }
 
 // ── Teacher ──────────────────────────────────────────────
@@ -56,6 +61,10 @@ export const teacherAPI = {
     })
   },
   sendSMS:      (data) => api.post('/teacher/send-sms', data),
+  generateSuggestions: (data) => api.post('/teacher/generate-suggestions', data),
+  getStudents:  ()     => api.get('/teacher/students'),
+  getAssignedTasks: () => api.get('/teacher/assigned-tasks'),
+  assignTask:   (data) => api.post('/teacher/assigned-tasks', data),
 }
 
 // ── AI ──────────────────────────────────────────────────

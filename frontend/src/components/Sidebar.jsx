@@ -10,13 +10,13 @@ import {
   FiCalendar,
   FiBook,
   FiTarget,
-  FiTrendingUp,
   FiUsers,
   FiSettings,
   FiLogOut,
   FiChevronLeft,
   FiChevronRight,
   FiLayers,
+  FiCheckSquare,
 } from 'react-icons/fi'
 import { useState } from 'react'
 
@@ -33,7 +33,8 @@ const studentLinks = [
 
 const teacherLinks = [
   { to: '/teacher', icon: FiHome, labelKey: 'dashboard' },
-  { to: '/analytics', icon: FiTrendingUp, labelKey: 'analytics' },
+  // { to: '/analytics', icon: FiTrendingUp, labelKey: 'analytics' },
+  { to: '/assigned-tasks', icon: FiCheckSquare, labelKey: 'Assigned Tasks' },
   { to: '/library', icon: FiBook, labelKey: 'library' },
   { to: '/tutor', icon: FiMessageSquare, labelKey: 'tutor', badge: 'AI' },
   // { to: '/volunteers', icon: FiUsers, labelKey: 'volunteers' },
@@ -69,6 +70,9 @@ export default function Sidebar() {
         .toUpperCase()
         .slice(0, 2)
     : 'U'
+
+  const backendUrl = import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:8000'
+  const displayAvatar = user?.avatar ? (user.avatar.startsWith('http') ? user.avatar : `${backendUrl}${user.avatar}`) : null
 
   const handleLogout = async () => {
     try {
@@ -298,23 +302,38 @@ export default function Sidebar() {
               marginBottom: 12,
             }}
           >
-            <div
-              style={{
-                width: 36,
-                height: 36,
-                borderRadius: 10,
-                flexShrink: 0,
-                background: 'linear-gradient(135deg, #8B5CF6, #EC4899)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: 'white',
-                fontSize: 14,
-                fontWeight: 700,
-              }}
-            >
-              {initials}
-            </div>
+            {displayAvatar ? (
+              <img
+                src={displayAvatar}
+                alt="Avatar"
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 10,
+                  flexShrink: 0,
+                  objectFit: 'cover',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+                }}
+              />
+            ) : (
+              <div
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 10,
+                  flexShrink: 0,
+                  background: 'linear-gradient(135deg, #8B5CF6, #EC4899)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: 'white',
+                  fontSize: 14,
+                  fontWeight: 700,
+                }}
+              >
+                {initials}
+              </div>
+            )}
             {!collapsed && (
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div

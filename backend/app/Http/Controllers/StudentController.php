@@ -195,6 +195,34 @@ class StudentController extends Controller
         return response()->json($progressData);
     }
 
+    public function getAssignedTasks(Request $request)
+    {
+        $userId = (string) $request->user()->_id;
+        $tasks = \App\Models\AssignedTask::with('teacher')
+            ->where('student_id', $userId)
+            ->orderBy('created_at', 'desc')
+            ->get();
+        return response()->json($tasks);
+    }
+
+    public function completeTask(Request $request, $id)
+    {
+        $userId = (string) $request->user()->_id;
+        $task = \App\Models\AssignedTask::where('_id', $id)
+            ->where('student_id', $userId)
+            ->first();
+
+        if (!$task) {
+            return response()->json(['error' => 'Task not found'], 404);
+        }
+
+        $task->is_completed = true;
+        $task->completed_at = now();
+        $task->save();
+
+        return response()->json(['message' => 'Task completed successfully', 'task' => $task]);
+    }
+
     /**
      * GET /api/lessons/{id}/download
      */

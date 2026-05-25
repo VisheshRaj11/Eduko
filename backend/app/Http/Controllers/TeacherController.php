@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use App\Models\Student;
+use App\Models\Teacher;
 use App\Models\Progress;
 use App\Models\Lesson;
 use App\Services\TwilioService;
@@ -31,20 +32,16 @@ class TeacherController extends Controller
         [$grades, $subjects] = $this->getTeacherFilters($request);
 
         $studentQuery = Student::query();
-        if (!empty($grades)) {
+        if (empty($grades)) {
+            $totalStudents = 0;
+            $studentUserIds = [];
+        } else {
             $studentQuery->whereIn('grade_level', $grades);
+            $totalStudents = $studentQuery->count();
+            $studentUserIds = $studentQuery->pluck('user_id')->all();
         }
-        if (!empty($subjects)) {
-            $studentQuery->where(function($q) use ($subjects) {
-                $q->whereNull('subjects')
-                  ->orWhere('subjects', 'size', 0)
-                  ->orWhereIn('subjects', $subjects);
-            });
-        }
-        $totalStudents = $studentQuery->count();
-        $studentUserIds = $studentQuery->pluck('user_id')->all();
 
-        $avgScore = empty($studentUserIds) ? 0 : Progress::where('type', 'quiz')
+        $avgScore = empty($studentUserIds) ? 0 : Progress::whereIn('type', ['quiz', 'ai_quiz'])
             ->whereIn('user_id', $studentUserIds)
             ->avg('score') ?? 0;
 
@@ -53,12 +50,23 @@ class TeacherController extends Controller
               ->orWhere('created_by', (string) $request->user()->_id);
         })->count();
 
-        $atRisk = empty($studentUserIds) ? 0 : Progress::where('type', 'quiz')
-            ->whereIn('user_id', $studentUserIds)
-            ->selectRaw('user_id, AVG(score) as avg_score')
-            ->groupBy('user_id')
-            ->havingRaw('avg_score < 50')
-            ->count();
+        $atRisk = 0;
+        if (!empty($studentUserIds)) {
+            $scoresByUser = Progress::whereIn('type', ['quiz', 'ai_quiz'])
+                ->whereIn('user_id', $studentUserIds)
+                ->get()
+                ->groupBy('user_id');
+            foreach ($scoresByUser as $uid => $progresses) {
+                if ($progresses->avg('score') < 60) {
+                    $atRisk++;
+                }
+            }
+        }
+
+        $lessons = Lesson::where('teacher_id', (string) $request->user()->_id)
+            ->orWhere('created_by', (string) $request->user()->_id)
+            ->select('_id', 'title')
+            ->get();
 
         return response()->json([
             'stats' => [
@@ -71,7 +79,8 @@ class TeacherController extends Controller
             'weekly_activity'     => $this->getWeeklyActivity($studentUserIds),
             'topic_heatmap'       => $this->getTopicHeatmap(),
             'struggling_students' => $this->getStrugglingStudents($studentUserIds),
-            'ai_suggestions'      => $this->getAISuggestions(),
+            'ai_suggestions'      => $this->getAISuggestions($request->user()->_id),
+            'lessons'             => $lessons,
         ]);
     }
 
@@ -305,18 +314,22 @@ class TeacherController extends Controller
 
         [$teacherGrades, $teacherSubjects] = $this->getTeacherFilters($request);
 
-        $query = Student::whereNotNull('phone');
+        $query = Student::with('user');
         
         if (!empty($teacherGrades)) {
             $query->whereIn('grade_level', $teacherGrades);
         }
 
-        if ($validated['target'] === 'class' && isset($validated['grade'])) {
+        if (($validated['target'] ?? null) === 'class' && isset($validated['grade'])) {
             $query->where('grade_level', (int) $validated['grade']);
         }
 
         $students  = $query->get();
-        $phones    = $students->pluck('phone')->filter()->values()->all();
+        
+        // Fetch phone numbers directly from User collection to avoid relation type mismatch
+        $userIds = $students->pluck('user_id')->all();
+        $users = \App\Models\User::whereIn('_id', $userIds)->whereNotNull('phone')->get();
+        $phones = $users->pluck('phone')->filter()->values()->all();
 
         if (empty($phones)) {
             return response()->json(['message' => 'No students with phone numbers found.', 'sent' => 0]);
@@ -333,6 +346,56 @@ class TeacherController extends Controller
         ]);
     }
 
+    // ── Assigned Tasks ───────────────────────────────────────
+
+    public function getStudents(Request $request)
+    {
+        [$teacherGrades, $teacherSubjects] = $this->getTeacherFilters($request);
+        
+        $query = Student::query();
+        if (!empty($teacherGrades)) {
+            $query->whereIn('grade_level', $teacherGrades);
+        }
+        
+        $students = $query->with('user:id,avatar')->get(['_id', 'user_id', 'name', 'grade_level', 'phone']);
+        
+        $students->transform(function ($student) {
+            $student->avatar = $student->user ? $student->user->avatar : null;
+            return $student;
+        });
+
+        return response()->json($students);
+    }
+
+    public function getAssignedTasks(Request $request)
+    {
+        $userId = (string) $request->user()->_id;
+        $tasks = \App\Models\AssignedTask::with('student')
+            ->where('teacher_id', $userId)
+            ->orderBy('created_at', 'desc')
+            ->get();
+        return response()->json($tasks);
+    }
+
+    public function assignTask(Request $request)
+    {
+        $validated = $request->validate([
+            'student_id'       => 'required|string',
+            'task_description' => 'required|string|max:1000'
+        ]);
+
+        $userId = (string) $request->user()->_id;
+
+        $task = \App\Models\AssignedTask::create([
+            'teacher_id'       => $userId,
+            'student_id'       => $validated['student_id'],
+            'task_description' => $validated['task_description'],
+            'is_completed'     => false,
+        ]);
+
+        return response()->json(['message' => 'Task assigned successfully', 'task' => $task]);
+    }
+
     // ── Private analytics helpers ──────────────────────────
 
     private function getTeacherFilters(Request $request): array
@@ -346,37 +409,58 @@ class TeacherController extends Controller
 
     private function getSubjectPerformance(array $studentUserIds = [], array $teacherSubjects = []): array
     {
-        $subjects = empty($teacherSubjects) ? ['Mathematics', 'Science', 'Hindi', 'English', 'Social Studies'] : array_slice($teacherSubjects, 0, 5);
-        $colors   = ['#8B5CF6', '#A3E635', '#F472B6', '#60A5FA', '#34D399'];
-        $result   = [];
+        $colors = ['#8B5CF6', '#A3E635', '#F472B6', '#60A5FA', '#34D399'];
+        $result = [];
 
-        foreach ($subjects as $i => $subject) {
-            $q = Progress::where('type', 'quiz')->where('subject', $subject);
-            if (!empty($studentUserIds)) {
-                $q->whereIn('user_id', $studentUserIds);
+        if (!empty($studentUserIds)) {
+            $scoresBySubject = Progress::whereIn('type', ['quiz', 'ai_quiz'])
+                ->whereIn('user_id', $studentUserIds)
+                ->get()
+                ->groupBy(function($item) {
+                    return ucfirst(strtolower($item->subject)); // Normalize 'english' to 'English'
+                });
+                
+            $i = 0;
+            foreach ($scoresBySubject as $subj => $progresses) {
+                $avg = $progresses->avg('score') ?? 0;
+                $result[] = ['subject' => $subj, 'score' => round($avg, 1), 'fill' => $colors[$i % count($colors)]];
+                $i++;
             }
-            $avg = $q->avg('score') ?? rand(55, 88);
-            $result[] = ['subject' => $subject, 'score' => round($avg, 1), 'fill' => $colors[$i % count($colors)]];
         }
+
+        if (empty($result)) {
+            $fallback = empty($teacherSubjects) ? ['Mathematics', 'Science', 'Hindi', 'English', 'Social Studies'] : array_slice($teacherSubjects, 0, 5);
+            foreach ($fallback as $i => $subj) {
+                $result[] = ['subject' => ucfirst(strtolower($subj)), 'score' => 0, 'fill' => $colors[$i % count($colors)]];
+            }
+        }
+
         return $result;
     }
 
     private function getWeeklyActivity(array $studentUserIds = []): array
     {
-        $weeks = [];
-        for ($i = 4; $i >= 0; $i--) {
-            $start    = now()->subWeeks($i)->startOfWeek();
-            $end      = now()->subWeeks($i)->endOfWeek();
-            
-            $q = Progress::whereBetween('created_at', [$start, $end]);
-            if (!empty($studentUserIds)) {
-                $q->whereIn('user_id', $studentUserIds);
+        $days = ['Mon' => 0, 'Tue' => 0, 'Wed' => 0, 'Thu' => 0, 'Fri' => 0];
+        
+        if (!empty($studentUserIds)) {
+            $sessions = \App\Models\Session::whereIn('student_id', $studentUserIds)
+                ->where('scheduled_time', '>=', now()->startOfWeek())
+                ->get();
+            foreach ($sessions as $session) {
+                if ($session->scheduled_time) {
+                    $day = $session->scheduled_time->format('D');
+                    if (isset($days[$day])) {
+                        $days[$day]++;
+                    }
+                }
             }
-            $sessions = $q->count();
-            
-            $weeks[]  = ['week' => 'W' . (5 - $i), 'sessions' => $sessions];
         }
-        return $weeks;
+
+        $result = [];
+        foreach ($days as $day => $count) {
+            $result[] = ['day' => $day, 'students' => $count];
+        }
+        return $result;
     }
 
     private function getTopicHeatmap(): array
@@ -419,13 +503,83 @@ class TeacherController extends Controller
             ->all();
     }
 
-    private function getAISuggestions(): array
+    private function getAISuggestions(string $userId): string
     {
-        return [
-            'Focus more on fraction concepts — 60% students scored below passing.',
-            'Schedule extra Hindi reading sessions. Comprehension scores are declining.',
-            'Consider grouping high-performers for peer teaching opportunities.',
-            'Students show 40% improvement when given visual examples.',
-        ];
+        $teacher = Teacher::where('user_id', $userId)->first();
+        if ($teacher && !empty($teacher->ai_suggestions)) {
+            return $teacher->ai_suggestions;
+        }
+
+        return "No AI suggestions yet. Select a lesson (optional), type a prompt, and click **Get Suggestions** to generate actionable insights.";
+    }
+
+    /**
+     * POST /api/teacher/generate-suggestions
+     */
+    public function generateAISuggestions(Request $request)
+    {
+        $validated = $request->validate([
+            'prompt' => 'nullable|string|max:1000',
+            'lesson_id' => 'nullable|string|max:100',
+        ]);
+
+        $userId = (string) $request->user()->_id;
+        $teacher = Teacher::where('user_id', $userId)->first();
+        if (!$teacher) {
+            return response()->json(['message' => 'Teacher profile not found.'], 404);
+        }
+
+        [$grades, $subjects] = $this->getTeacherFilters($request);
+        
+        $studentQuery = Student::query();
+        if (!empty($grades)) {
+            $studentQuery->whereIn('grade_level', $grades);
+        }
+        $studentUserIds = $studentQuery->pluck('user_id')->all();
+        
+        $strugglingStudents = $this->getStrugglingStudents($studentUserIds);
+
+        $context = "You are an expert AI teacher assistant. You are analyzing the performance of a class. ";
+        
+        if (!empty($validated['lesson_id'])) {
+            $lesson = Lesson::find($validated['lesson_id']);
+            if ($lesson) {
+                $context .= "The teacher is specifically asking about the lesson titled '{$lesson->title}'. ";
+            }
+        }
+
+        $context .= "Here are the students struggling the most (scores < 60): " . json_encode($strugglingStudents) . ". ";
+        $context .= "Assume a rural school setting with limited resources (e.g., no projectors or advanced technology). Suggest activities requiring minimal or low-cost materials. ";
+        $context .= "Generate actionable, specific advice to help the teacher improve their class's performance. ";
+        if (!empty($validated['prompt'])) {
+            $context .= "The teacher specifically asked: " . $validated['prompt'] . ". ";
+        }
+        
+        $context .= "CRITICAL: You MUST format your entire response using Markdown. Use bolding, bullet points, and headers as appropriate.";
+
+        try {
+            $response = Http::timeout(60)->post("{$this->aiUrl}/ai/chat", [
+                'message' => $context,
+                'user_id' => $userId,
+            ]);
+
+            if ($response->successful()) {
+                $text = $response->json('response', '');
+                
+                $teacher->ai_suggestions = $text;
+                $teacher->save();
+
+                return response()->json([
+                    'suggestions' => $text,
+                    'message' => 'AI suggestions generated successfully.'
+                ]);
+            }
+
+            return response()->json(['message' => 'Failed to generate suggestions from AI service.'], 500);
+
+        } catch (\Exception $e) {
+            Log::error("generateAISuggestions error: " . $e->getMessage());
+            return response()->json(['message' => 'AI service error.'], 500);
+        }
     }
 }

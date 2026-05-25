@@ -124,4 +124,60 @@ class AuthController extends Controller
             'profile' => $profile?->toArray(),
         ]);
     }
+
+    /**
+     * Update user profile
+     */
+    public function updateProfile(Request $request)
+    {
+        $user = $request->user();
+
+        $validated = $request->validate([
+            'name' => 'nullable|string|min:2|max:100',
+            'phone' => 'nullable|string|max:20',
+            'grade_level' => 'nullable|integer|min:1|max:12',
+            'avatar' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:5120', // Max 5MB
+        ]);
+
+        if (isset($validated['name'])) {
+            $user->name = $validated['name'];
+        }
+        if (isset($validated['phone'])) {
+            $user->phone = $validated['phone'];
+        }
+        if (isset($validated['grade_level'])) {
+            $user->grade_level = $validated['grade_level'];
+        }
+
+        if ($request->hasFile('avatar')) {
+            $file = $request->file('avatar');
+            $filename = time() . '_' . uniqid() . '.' . $file->getClientOriginalExtension();
+            // Store directly to public/avatars folder
+            $file->move(public_path('avatars'), $filename);
+            $user->avatar = '/avatars/' . $filename;
+        }
+
+        $user->save();
+
+        // Also update the role-specific profile document if necessary
+        if ($user->role === 'student' && (isset($validated['name']) || isset($validated['grade_level']))) {
+            $student = Student::where('user_id', (string) $user->_id)->first();
+            if ($student) {
+                if (isset($validated['name'])) $student->name = $validated['name'];
+                if (isset($validated['grade_level'])) $student->grade_level = $validated['grade_level'];
+                $student->save();
+            }
+        } else if (in_array($user->role, ['teacher', 'volunteer']) && isset($validated['name'])) {
+            $profile = match ($user->role) {
+                'teacher' => Teacher::where('user_id', (string) $user->_id)->first(),
+                'volunteer' => Volunteer::where('user_id', (string) $user->_id)->first(),
+            };
+            if ($profile) {
+                $profile->name = $validated['name'];
+                $profile->save();
+            }
+        }
+
+        return $this->me($request);
+    }
 }

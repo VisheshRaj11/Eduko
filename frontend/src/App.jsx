@@ -5,6 +5,7 @@ import Login from './pages/Login'
 import Register from './pages/Register'
 import StudentDashboard from './pages/StudentDashboard'
 import TeacherDashboard from './pages/TeacherDashboard'
+import TeacherAssignedTasks from './pages/TeacherAssignedTasks'
 import AITutor from './pages/AITutor'
 import LearningPlan from './pages/LearningPlan'
 import ContentLibrary from './pages/ContentLibrary'
@@ -76,6 +77,7 @@ export default function App() {
           {/* Teacher Protected */}
           <Route path="/teacher"    element={<ProtectedRoute allowedRoles={['teacher', 'admin']}><TeacherDashboard /></ProtectedRoute>} />
           <Route path="/analytics"  element={<ProtectedRoute allowedRoles={['teacher', 'admin']}><Analytics /></ProtectedRoute>} />
+          <Route path="/assigned-tasks" element={<ProtectedRoute allowedRoles={['teacher', 'admin']}><TeacherAssignedTasks /></ProtectedRoute>} />
 
           {/* Catch-all */}
           <Route path="*" element={<Navigate to="/" replace />} />

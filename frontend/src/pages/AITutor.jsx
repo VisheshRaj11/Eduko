@@ -274,7 +274,7 @@ export default function AITutor() {
   }
 
   return (
-    <AppLayout title={t('tutorTitle')}>
+    <AppLayout title={t('tutorTitle')} noRadial>
       <div
         style={{
           height: 'calc(100vh)',

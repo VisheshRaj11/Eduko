@@ -15,7 +15,7 @@ class TwilioService
         $token = config('services.twilio.token');
         $this->from = config('services.twilio.from', '');
 
-        if ($sid && $token && $sid !== 'your_twilio_sid_here' && class_exists('\Twilio\Rest\Client')) {
+        if ($sid && $token && $sid !== 'your_twilio_sid_here') {
             $this->twilio = new \Twilio\Rest\Client($sid, $token);
         }
     }
