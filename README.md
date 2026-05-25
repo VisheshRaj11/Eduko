@@ -2,6 +2,8 @@
 
 > Bringing quality education to every child in India through AI, multilingual support, and offline-first PWA.
 
+![Eduko Landing Page](./frontend/public/landing.png)
+
 ---
 
 ## 🏗️ Architecture
